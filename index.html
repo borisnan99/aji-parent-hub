@@ -273,7 +273,8 @@ function App(){
   useEffect(()=>{if(session&&session.user)sb.from('profiles').select('*').eq('id',session.user.id).single().then(({data})=>setProfile(data));else setProfile(null)},[session])
   if(session===undefined)return html`<div class="center muted">Loading…</div>`
   if(!session)return html`<${Login}/>`
-  if(profile&&(profile.role==='admin'||profile.role==='staff'))return html`<${Dashboard} profile=${profile} onSignOut=${()=>sb.auth.signOut()}/>`
+  if(profile===null)return html`<div class="center muted">Loading…</div>`
+  if(profile.role==='admin'||profile.role==='staff')return html`<${Dashboard} profile=${profile} onSignOut=${()=>sb.auth.signOut()}/>`
   return html`<${ParentApp} profile=${profile} onSignOut=${()=>sb.auth.signOut()}/>`}
 createRoot(document.getElementById('root')).render(html`<${App}/>`)
 </script>
