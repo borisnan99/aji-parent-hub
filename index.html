@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Al Jamiatul Islamiyah — Parent Hub</title>
+<link rel="manifest" href="/manifest.json" />
+<meta name="theme-color" content="#14294D" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="default" />
+<meta name="apple-mobile-web-app-title" content="AJI Parent Hub" />
+<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+<link rel="icon" href="/icon-192.png" />
+<style>
+  :root{--navy:#14294D;--navy-deep:#0E1D38;--ink:#1B2438;--gold:#C4A24C;--gold-soft:#EFE4C4;
+    --ground:#FAF8F3;--card:#FFFFFF;--line:#E8E3D6;--muted:#6E6A60;--urgent:#B23A2E;--green:#3F6B4E;
+    --serif:Georgia,"Times New Roman",serif;--sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--ground);font-family:var(--sans);color:var(--ink);-webkit-font-smoothing:antialiased}
+  input,button,textarea,select{font:inherit}
+  .wrap{max-width:640px;margin:0 auto;min-height:100vh}
+  .center{display:flex;min-height:100vh;align-items:center;justify-content:center;padding:24px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:16px}
+  .btn{background:var(--navy);color:#fff;border:none;border-radius:12px;padding:12px 16px;font-weight:600;cursor:pointer;width:100%}
+  .btn.gold{background:var(--gold);color:var(--navy-deep)}
+  .btn.ghost{background:#fff;color:var(--navy);border:1px solid var(--line)}
+  .btn:disabled{opacity:.55}
+  .in{width:100%;border:1px solid var(--line);border-radius:12px;padding:12px;background:#fff;outline:none;margin-top:6px}
+  .lbl{font-size:12px;font-weight:700;color:var(--ink)}
+  .muted{color:var(--muted)}.serif{font-family:var(--serif)}
+  .chip{border-radius:999px;padding:6px 12px;font-size:12px;font-weight:600;border:1px solid var(--line);background:#fff;color:var(--ink);cursor:pointer}
+  .chip.on{background:var(--navy);color:#fff;border-color:var(--navy)}
+  .tag{border-radius:999px;padding:2px 8px;font-size:10px;font-weight:700}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script>
+if ('serviceWorker' in navigator) window.addEventListener('load',()=>navigator.serviceWorker.register('/sw.js').catch(()=>{}));
+let deferredPrompt=null;
+window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferredPrompt=e;window.dispatchEvent(new Event('caninstall'));});
+</script>
+<script type="module">
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4'
+import React, { useState, useEffect } from 'https://esm.sh/react@18.3.1'
+import { createRoot } from 'https://esm.sh/react-dom@18.3.1/client'
+import htm from 'https://esm.sh/htm@3.1.1'
+const html = htm.bind(React.createElement)
+
+const SUPABASE_URL='https://maklrulelurahdlkbsgz.supabase.co'
+const ANON='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1ha2xydWxlbHVyYWhkbGtic2d6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI0NzY0NTMsImV4cCI6MjA5ODA1MjQ1M30.i35qnqJ87kYSQhr6p-DZnJOYjUT4-Kr4JQ-v7UeBUUI'
+const VAPID_PUBLIC='BAOQKMY87mtl6SBTXuJW6FoPOKfNxY4JLugXOtlFBzCQg-qb7-THzG2RP38VfAxoGYDhd0gqTPkrar78PucPekY'
+const sb=createClient(SUPABASE_URL,ANON,{db:{schema:'parent_hub'},auth:{persistSession:true}})
+
+const C={navy:'#14294D',gold:'#C4A24C',goldSoft:'#EFE4C4',ink:'#1B2438',muted:'#6E6A60',urgent:'#B23A2E',urgentSoft:'#F5E4E1',green:'#3F6B4E',line:'#E8E3D6'}
+const PRIORITY={urgent:{label:'Urgent'},important:{label:'Important'},normal:{label:'Notice'}}
+
+function u8(b64){const pad='='.repeat((4-b64.length%4)%4);const s=(b64+pad).replace(/-/g,'+').replace(/_/g,'/');const r=atob(s);const a=new Uint8Array(r.length);for(let i=0;i<r.length;i++)a[i]=r.charCodeAt(i);return a}
+async function enablePush(userId){
+  if(!('serviceWorker'in navigator)||!('PushManager'in window)) return {error:'This browser doesn\u2019t support notifications.'}
+  const perm=await Notification.requestPermission(); if(perm!=='granted') return {error:'Notifications were not allowed.'}
+  const reg=await navigator.serviceWorker.ready
+  const sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:u8(VAPID_PUBLIC)})
+  const j=sub.toJSON()
+  const {error}=await sb.from('push_subscriptions').upsert({user_id:userId,endpoint:j.endpoint,p256dh:j.keys.p256dh,auth:j.keys.auth,user_agent:navigator.userAgent},{onConflict:'endpoint'})
+  return {error:error?error.message:null}
+}
+
+function Crest({size=44,ink=C.navy,accent=C.gold}){return html`<svg width=${size} height=${size} viewBox="0 0 48 48" fill="none">
+  <path d="M12 43 L34 27 M36 43 L14 27" stroke=${ink} stroke-width="2.4" stroke-linecap="round"/>
+  <path d="M24 16 C18 13 12.5 13.5 8 16.5 L8 29 C12.5 26 18 25.5 24 28 Z" fill=${ink}/>
+  <path d="M24 16 C30 13 35.5 13.5 40 16.5 L40 29 C35.5 26 30 25.5 24 28 Z" fill=${ink}/>
+  <path d="M24 18.5 L24 27.5" stroke=${accent} stroke-width="1.3"/></svg>`}
+
+function Login(){
+  const [email,setEmail]=useState('');const [pw,setPw]=useState('');const [err,setErr]=useState('');const [busy,setBusy]=useState(false)
+  async function go(){setBusy(true);setErr('');const {error}=await sb.auth.signInWithPassword({email:email.trim(),password:pw});setBusy(false);if(error)setErr(error.message)}
+  return html`<div class="center"><div style=${{width:'100%',maxWidth:380,textAlign:'center'}}>
+    <div style=${{display:'flex',justifyContent:'center'}}>${Crest({size:64})}</div>
+    <div class="serif" style=${{color:C.gold,fontSize:24,marginTop:10,direction:'rtl'}}>الجامعة الإسلامية</div>
+    <div class="serif" style=${{color:C.navy,fontSize:20,fontWeight:700,marginTop:2}}>Al Jamiatul Islamiyah</div>
+    <div class="muted" style=${{fontSize:10,letterSpacing:'.18em',fontWeight:600}}>BOLTON DARUL ULOOM · PARENT HUB</div>
+    <div class="card" style=${{padding:20,marginTop:22,textAlign:'left'}}>
+      <div class="lbl">Email</div><input class="in" value=${email} onInput=${e=>setEmail(e.target.value)} placeholder="you@example.com"/>
+      <div class="lbl" style=${{marginTop:12}}>Password</div><input class="in" type="password" value=${pw} onInput=${e=>setPw(e.target.value)} onKeyDown=${e=>e.key==='Enter'&&go()}/>
+      ${err&&html`<div style=${{color:C.urgent,fontSize:13,marginTop:10}}>${err}</div>`}
+      <button class="btn" style=${{marginTop:16}} disabled=${busy} onClick=${go}>${busy?'Signing in…':'Sign in'}</button>
+    </div>
+    <div class="muted" style=${{fontSize:11,marginTop:14}}>Your details are private and never shared with other parents.</div>
+  </div></div>`}
+
+function NotifyCard({userId,fire}){
+  const [state,setState]=useState(typeof Notification!=='undefined'?Notification.permission:'unsupported')
+  const [canInstall,setCanInstall]=useState(!!deferredPrompt)
+  useEffect(()=>{const h=()=>setCanInstall(true);window.addEventListener('caninstall',h);return()=>window.removeEventListener('caninstall',h)},[])
+  const isIOS=/iphone|ipad|ipod/i.test(navigator.userAgent)
+  const standalone=window.matchMedia('(display-mode: standalone)').matches||window.navigator.standalone
+  async function enable(){const {error}=await enablePush(userId);if(error)fire(error);else{setState('granted');fire('Notifications enabled on this device')}}
+  async function test(){const {data,error}=await sb.functions.invoke('send-announcement',{body:{mode:'test'}});fire(error?('Error: '+error.message):(data&&data.pushed?'Test notification sent — check your device':'No device subscribed yet'))}
+  async function install(){if(deferredPrompt){deferredPrompt.prompt();await deferredPrompt.userChoice;deferredPrompt=null;setCanInstall(false)}}
+  return html`<div class="card" style=${{padding:14,marginBottom:14,background:'#fff'}}>
+    <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+      <div><b>Notifications</b><div class="muted" style=${{fontSize:11}}>${state==='granted'?'On for this device':'Free instant alerts (no WhatsApp)'}</div></div>
+      <div style=${{display:'flex',gap:8}}>
+        ${state!=='granted'&&html`<button class="btn ghost" style=${{width:'auto',padding:'8px 12px',fontSize:13}} onClick=${enable}>Enable</button>`}
+        ${state==='granted'&&html`<button class="btn ghost" style=${{width:'auto',padding:'8px 12px',fontSize:13}} onClick=${test}>Send test</button>`}
+      </div>
+    </div>
+    ${canInstall&&!standalone&&html`<button class="btn gold" style=${{marginTop:10}} onClick=${install}>Install app on this device</button>`}
+    ${isIOS&&!standalone&&html`<div class="muted" style=${{fontSize:11,marginTop:10}}>On iPhone: tap Share → “Add to Home Screen”, then open it from there to turn on notifications.</div>`}
+  </div>`}
+
+function Stat({n,label,sub}){return html`<div class="card" style=${{padding:16,flex:1,minWidth:120}}>
+  <div class="serif" style=${{color:C.navy,fontSize:26,fontWeight:700,lineHeight:1}}>${n}</div>
+  <div style=${{fontSize:12,fontWeight:600,marginTop:6}}>${label}</div><div class="muted" style=${{fontSize:11}}>${sub||''}</div></div>`}
+
+function Dashboard({profile,onSignOut}){
+  const [pupils,setPupils]=useState(null);const [classes,setClasses]=useState([]);const [groups,setGroups]=useState([])
+  const [anns,setAnns]=useState([]);const [tab,setTab]=useState('overview');const [q,setQ]=useState('');const [toast,setToast]=useState('')
+  const fire=m=>{setToast(m);setTimeout(()=>setToast(''),3200)}
+  async function load(){const [p,c,g,a]=await Promise.all([
+    sb.from('pupils').select('*').order('last_name'),
+    sb.from('classes').select('id,name,track,class_enrolments(count)'),
+    sb.from('groups').select('*'),
+    sb.from('announcements').select('*').order('created_at',{ascending:false}).limit(10)])
+    setPupils(p.data||[]);setClasses(c.data||[]);setGroups(g.data||[]);setAnns(a.data||[])}
+  useEffect(()=>{load()},[])
+  const total=pupils?pupils.length:0
+  const boarders=pupils?pupils.filter(p=>p.boarding_status==='Boarding').length:0
+  const groupSize=g=>{if(!pupils)return 0;if(g.kind==='all')return total
+    if(g.kind==='academic_year')return pupils.filter(p=>p.academic_year===g.criteria.academic_year).length
+    if(g.kind==='morning_class')return pupils.filter(p=>p.morning_class===g.criteria.morning_class).length
+    if(g.kind==='boarding')return pupils.filter(p=>p.boarding_status===g.criteria.boarding_status).length;return 0}
+  const filtered=pupils?pupils.filter(p=>(p.first_name+' '+p.last_name).toLowerCase().includes(q.toLowerCase())):[]
+  return html`<div class="wrap" style=${{paddingBottom:40}}>
+    <div style=${{background:C.navy,padding:'14px 18px',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+      <div style=${{display:'flex',gap:10,alignItems:'center'}}>${Crest({size:30,ink:'#fff',accent:C.gold})}
+        <div style=${{lineHeight:1.15}}><div class="serif" style=${{color:'#fff',fontWeight:700,fontSize:15}}>Staff dashboard</div>
+        <div style=${{color:'#AEBAD0',fontSize:10}}>Al Jamiatul Islamiyah</div></div></div>
+      <button onClick=${onSignOut} style=${{background:'transparent',border:'1px solid rgba(255,255,255,.3)',color:'#fff',borderRadius:10,padding:'6px 10px',fontSize:12,cursor:'pointer'}}>Sign out</button></div>
+    <div style=${{height:3,background:`linear-gradient(90deg,${C.gold},${C.goldSoft})`}}></div>
+    <div style=${{padding:'8px 16px 0',display:'flex',gap:8}}>${['overview','pupils','announce','inbox'].map(t=>html`
+      <button key=${t} onClick=${()=>setTab(t)} class="chip ${tab===t?'on':''}">${t==='overview'?'Overview':t==='pupils'?'Pupils':t==='announce'?'Announce':'Inbox'}</button>`)}</div>
+    <div style=${{padding:16}}>
+      ${pupils===null&&html`<div class="muted">Loading live data…</div>`}
+      ${tab==='overview'&&pupils&&html`<div>
+        ${NotifyCard({userId:profile.id,fire})}
+        <div style=${{display:'flex',gap:10,flexWrap:'wrap'}}>
+          ${Stat({n:total,label:'Pupils on roll',sub:'live from register'})}
+          ${Stat({n:boarders,label:'Boarders',sub:`${total-boarders} commuters`})}
+          ${Stat({n:classes.length,label:'Classes',sub:'morning streams'})}
+          ${Stat({n:anns.length,label:'Announcements',sub:'posted'})}</div>
+        <h3 class="serif" style=${{color:C.navy,margin:'22px 0 8px'}}>Groups you can message</h3>
+        <div style=${{display:'flex',flexWrap:'wrap',gap:8}}>${groups.slice().sort((a,b)=>a.kind.localeCompare(b.kind)).map(g=>html`
+          <span key=${g.id} class="chip" style=${{cursor:'default'}}>${g.name} <b style=${{color:C.gold}}>${groupSize(g)}</b></span>`)}</div>
+        <h3 class="serif" style=${{color:C.navy,margin:'22px 0 8px'}}>Morning classes</h3>
+        ${classes.slice().sort((a,b)=>a.name.localeCompare(b.name)).map(c=>html`<div key=${c.id} class="card" style=${{padding:'12px 14px',marginBottom:8,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+          <div><b>${c.name}</b><div class="muted" style=${{fontSize:11,textTransform:'capitalize'}}>${c.track}</div></div>
+          <div class="serif" style=${{color:C.navy,fontWeight:700}}>${(c.class_enrolments&&c.class_enrolments[0]&&c.class_enrolments[0].count)||0}</div></div>`)}
+      </div>`}
+      ${tab==='pupils'&&pupils&&html`<div>
+        <input class="in" placeholder="Search pupils…" value=${q} onInput=${e=>setQ(e.target.value)} style=${{marginBottom:12}}/>
+        <div class="muted" style=${{fontSize:12,marginBottom:8}}>${filtered.length} of ${total}</div>
+        ${filtered.map(p=>html`<div key=${p.id} class="card" style=${{padding:'10px 14px',marginBottom:6}}>
+          <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center'}}><b>${p.first_name} ${p.last_name}</b>
+          <span class="tag" style=${{background:p.boarding_status==='Boarding'?C.navy:'#EEF',color:p.boarding_status==='Boarding'?'#fff':C.navy}}>${p.boarding_status||'—'}</span></div>
+          <div class="muted" style=${{fontSize:12,marginTop:2}}>${p.academic_year||'—'} · ${p.morning_class||'—'}</div></div>`)}
+      </div>`}
+      ${tab==='announce'&&html`${Composer({groups,groupSize,onSent:m=>{fire(m);load()}})}`}
+      ${tab==='inbox'&&html`${Inbox()}`}
+    </div>
+    ${toast&&html`<div style=${{position:'fixed',left:'50%',bottom:24,transform:'translateX(-50%)',background:'#0E1D38',color:'#fff',padding:'10px 16px',borderRadius:999,fontSize:14,maxWidth:'90%',textAlign:'center'}}>${toast}</div>`}
+  </div>`}
+
+function Composer({groups,groupSize,onSent}){
+  const [title,setTitle]=useState('');const [body,setBody]=useState('');const [priority,setPriority]=useState('normal')
+  const [picked,setPicked]=useState([]);const [busy,setBusy]=useState(false)
+  const toggle=id=>setPicked(p=>p.includes(id)?p.filter(x=>x!==id):[...p,id])
+  const reach=(()=>{const ch=groups.filter(g=>picked.includes(g.id));if(ch.some(g=>g.kind==='all')){const a=groups.find(g=>g.kind==='all');return a?groupSize(a):0}return ch.reduce((s,g)=>s+groupSize(g),0)})()
+  async function publish(){if(!title||!picked.length)return;setBusy(true)
+    const {data,error}=await sb.functions.invoke('send-announcement',{body:{mode:'publish',title,message:body,priority,group_ids:picked}})
+    setBusy(false)
+    if(error){onSent('Error: '+error.message);return}
+    setTitle('');setBody('');setPicked([]);setPriority('normal')
+    onSent(`Posted · ${data.pushed} push to ${data.recipients} parents`+(data.email_ready?` · ${data.emailed} emailed`:' · email pending sender'))}
+  return html`<div>
+    <h2 class="serif" style=${{color:C.navy,marginTop:4}}>New announcement</h2>
+    <div class="lbl" style=${{marginTop:10}}>Title</div><input class="in" value=${title} onInput=${e=>setTitle(e.target.value)} placeholder="e.g. Half-term closure"/>
+    <div class="lbl" style=${{marginTop:12}}>Message</div><textarea class="in" rows="3" value=${body} onInput=${e=>setBody(e.target.value)} placeholder="Write your message to parents…"></textarea>
+    <div class="lbl" style=${{marginTop:12}}>Priority</div>
+    <div style=${{display:'flex',gap:8,marginTop:6}}>${Object.entries(PRIORITY).map(([k,p])=>html`<button key=${k} class="chip"
+      style=${{flex:1,...(priority===k?{background:k==='urgent'?C.urgent:k==='important'?C.gold:C.navy,color:'#fff',borderColor:'transparent'}:{})}} onClick=${()=>setPriority(k)}>${p.label}</button>`)}</div>
+    <div class="lbl" style=${{marginTop:12}}>Send to</div>
+    <div style=${{display:'flex',flexWrap:'wrap',gap:8,marginTop:6}}>${groups.map(g=>html`<button key=${g.id} class="chip ${picked.includes(g.id)?'on':''}" onClick=${()=>toggle(g.id)}>${g.name} <b style=${{color:picked.includes(g.id)?C.goldSoft:C.muted}}>${groupSize(g)}</b></button>`)}</div>
+    <div class="card" style=${{background:C.navy,color:'#fff',display:'flex',justifyContent:'space-between',alignItems:'center',padding:'12px 16px',marginTop:16,border:'none'}}>
+      <div><div style=${{fontSize:11,color:'#AEBAD0'}}>Will reach</div><div class="serif" style=${{fontSize:18,fontWeight:700}}>${reach} pupils' parents</div></div>
+      <button class="btn gold" style=${{width:'auto'}} disabled=${busy||!title||!picked.length} onClick=${publish}>${busy?'Sending…':'Publish'}</button></div>
+    <div class="muted" style=${{fontSize:11,marginTop:8}}>Push to everyone instantly · email only for parents without the app, or for Urgent notices.</div>
+  </div>`}
+
+function fmtTime(t){try{return new Date(t).toLocaleString([],{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})}catch(_){return ''}}
+
+function Thread({conversationId,isStaff,onBack}){
+  const [cid,setCid]=useState(conversationId)
+  const [msgs,setMsgs]=useState([]);const [text,setText]=useState('');const [busy,setBusy]=useState(false)
+  const box=React.useRef(null)
+  useEffect(()=>setCid(conversationId),[conversationId])
+  async function load(id){const c=id||cid;if(!c){setMsgs([]);return}
+    const {data}=await sb.from('messages').select('*').eq('conversation_id',c).order('created_at');setMsgs(data||[])}
+  useEffect(()=>{load()
+    if(!cid)return
+    const ch=sb.channel('t'+cid).on('postgres_changes',{event:'INSERT',schema:'parent_hub',table:'messages',filter:'conversation_id=eq.'+cid},p=>setMsgs(m=>m.some(x=>x.id===p.new.id)?m:[...m,p.new])).subscribe()
+    return ()=>sb.removeChannel(ch)},[cid])
+  useEffect(()=>{if(box.current)box.current.scrollTop=box.current.scrollHeight},[msgs])
+  async function send(){const b=text.trim();if(!b)return;setBusy(true);setText('')
+    const {data,error}=await sb.functions.invoke('send-message',{body:cid?{conversation_id:cid,body:b}:{body:b}})
+    setBusy(false)
+    if(error){setText(b);return}
+    if(!cid&&data&&data.conversation_id){setCid(data.conversation_id);load(data.conversation_id)}else load()}
+  return html`<div style=${{display:'flex',flexDirection:'column',height:'68vh'}}>
+    ${onBack&&html`<button class="chip" style=${{alignSelf:'flex-start',marginBottom:8}} onClick=${onBack}>← Back to inbox</button>`}
+    <div ref=${box} style=${{flex:1,overflowY:'auto',display:'flex',flexDirection:'column',gap:8,padding:'4px 2px'}}>
+      ${msgs.length===0&&html`<div class="muted" style=${{textAlign:'center',marginTop:24}}>No messages yet.</div>`}
+      ${msgs.map(m=>{const mine=((m.sender_role==='staff')===isStaff)
+        return html`<div key=${m.id} style=${{alignSelf:mine?'flex-end':'flex-start',maxWidth:'82%'}}>
+          <div style=${{background:mine?C.navy:'#fff',color:mine?'#fff':C.ink,border:mine?'none':'1px solid '+C.line,borderRadius:14,padding:'8px 12px',fontSize:14,whiteSpace:'pre-wrap'}}>${m.body}</div>
+          <div class="muted" style=${{fontSize:10,marginTop:2,textAlign:mine?'right':'left'}}>${m.sender_role==='staff'?'School':'Parent'} · ${fmtTime(m.created_at)}</div></div>`})}
+    </div>
+    <div style=${{display:'flex',gap:8,marginTop:8}}>
+      <input class="in" style=${{marginTop:0}} value=${text} onInput=${e=>setText(e.target.value)} onKeyDown=${e=>e.key==='Enter'&&send()} placeholder="Type a message…"/>
+      <button class="btn" style=${{width:'auto'}} disabled=${busy||!text.trim()} onClick=${send}>Send</button></div>
+  </div>`}
+
+function Inbox(){
+  const [convs,setConvs]=useState(null);const [names,setNames]=useState({});const [open,setOpen]=useState(null)
+  async function load(){const {data}=await sb.from('conversations').select('*').order('last_message_at',{ascending:false});setConvs(data||[])
+    const ids=[...new Set((data||[]).map(c=>c.parent_id))]
+    if(ids.length){const {data:ps}=await sb.from('profiles').select('id,full_name').in('id',ids);const m={};(ps||[]).forEach(p=>m[p.id]=p.full_name);setNames(m)}}
+  useEffect(()=>{load()
+    const ch=sb.channel('inbox').on('postgres_changes',{event:'*',schema:'parent_hub',table:'conversations'},()=>load()).on('postgres_changes',{event:'INSERT',schema:'parent_hub',table:'messages'},()=>load()).subscribe()
+    return ()=>sb.removeChannel(ch)},[])
+  if(open)return html`<${Thread} conversationId=${open.id} isStaff=${true} onBack=${()=>{setOpen(null);load()}}/>`
+  if(convs===null)return html`<div class="muted">Loading…</div>`
+  if(convs.length===0)return html`<div class="card muted" style=${{padding:16}}>No parent messages yet. When a parent messages the school, their conversation appears here.</div>`
+  return html`<div>${convs.map(c=>html`<div key=${c.id} class="card" style=${{padding:'12px 14px',marginBottom:8,cursor:'pointer'}} onClick=${()=>setOpen(c)}>
+    <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center'}}><b>${names[c.parent_id]||'Parent'}</b><span class="muted" style=${{fontSize:11}}>${fmtTime(c.last_message_at)}</span></div>
+    <div class="muted" style=${{fontSize:12}}>${c.subject||'Message'}</div></div>`)}</div>`}
+
+function ParentApp({profile,onSignOut}){
+  const [cid,setCid]=useState(undefined);const [toast,setToast]=useState('')
+  const fire=m=>{setToast(m);setTimeout(()=>setToast(''),3200)}
+  useEffect(()=>{sb.from('conversations').select('id').order('last_message_at',{ascending:false}).limit(1).then(({data})=>setCid(data&&data[0]?data[0].id:null))},[])
+  return html`<div class="wrap" style=${{paddingBottom:40}}>
+    <div style=${{background:C.navy,padding:'14px 18px',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+      <div style=${{display:'flex',gap:10,alignItems:'center'}}>${Crest({size:30,ink:'#fff',accent:C.gold})}
+        <div style=${{lineHeight:1.15}}><div class="serif" style=${{color:'#fff',fontWeight:700,fontSize:15}}>Parent Hub</div>
+        <div style=${{color:'#AEBAD0',fontSize:10}}>Al Jamiatul Islamiyah</div></div></div>
+      <button onClick=${onSignOut} style=${{background:'transparent',border:'1px solid rgba(255,255,255,.3)',color:'#fff',borderRadius:10,padding:'6px 10px',fontSize:12,cursor:'pointer'}}>Sign out</button></div>
+    <div style=${{height:3,background:`linear-gradient(90deg,${C.gold},${C.goldSoft})`}}></div>
+    <div style=${{padding:16}}>
+      ${NotifyCard({userId:profile.id,fire})}
+      <h2 class="serif" style=${{color:C.navy,margin:'6px 0 2px'}}>Message the school</h2>
+      <p class="muted" style=${{fontSize:12,marginTop:0}}>Private — only you and the school office can see this.</p>
+      ${cid===undefined?html`<div class="muted">Loading…</div>`:html`<${Thread} conversationId=${cid} isStaff=${false}/>`}
+    </div>
+    ${toast&&html`<div style=${{position:'fixed',left:'50%',bottom:24,transform:'translateX(-50%)',background:'#0E1D38',color:'#fff',padding:'10px 16px',borderRadius:999,fontSize:14}}>${toast}</div>`}
+  </div>`}
+
+function App(){
+  const [session,setSession]=useState(undefined);const [profile,setProfile]=useState(null)
+  useEffect(()=>{sb.auth.getSession().then(({data})=>setSession(data.session));const {data:sub}=sb.auth.onAuthStateChange((_e,s)=>setSession(s));return()=>sub.subscription.unsubscribe()},[])
+  useEffect(()=>{if(session&&session.user)sb.from('profiles').select('*').eq('id',session.user.id).single().then(({data})=>setProfile(data));else setProfile(null)},[session])
+  if(session===undefined)return html`<div class="center muted">Loading…</div>`
+  if(!session)return html`<${Login}/>`
+  if(profile&&(profile.role==='admin'||profile.role==='staff'))return html`<${Dashboard} profile=${profile} onSignOut=${()=>sb.auth.signOut()}/>`
+  return html`<${ParentApp} profile=${profile} onSignOut=${()=>sb.auth.signOut()}/>`}
+createRoot(document.getElementById('root')).render(html`<${App}/>`)
+</script>
+</body>
+</html>
