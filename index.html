@@ -145,7 +145,7 @@ function Dashboard({profile,onSignOut}){
     <div style=${{padding:16}}>
       ${pupils===null&&html`<div class="muted">Loading live data…</div>`}
       ${tab==='overview'&&pupils&&html`<div>
-        ${NotifyCard({userId:profile.id,fire})}
+        <${NotifyCard} userId=${profile.id} fire=${fire}/>
         <div style=${{display:'flex',gap:10,flexWrap:'wrap'}}>
           ${Stat({n:total,label:'Pupils on roll',sub:'live from register'})}
           ${Stat({n:boarders,label:'Boarders',sub:`${total-boarders} commuters`})}
@@ -167,8 +167,8 @@ function Dashboard({profile,onSignOut}){
           <span class="tag" style=${{background:p.boarding_status==='Boarding'?C.navy:'#EEF',color:p.boarding_status==='Boarding'?'#fff':C.navy}}>${p.boarding_status||'—'}</span></div>
           <div class="muted" style=${{fontSize:12,marginTop:2}}>${p.academic_year||'—'} · ${p.morning_class||'—'}</div></div>`)}
       </div>`}
-      ${tab==='announce'&&html`${Composer({groups,groupSize,onSent:m=>{fire(m);load()}})}`}
-      ${tab==='inbox'&&html`${Inbox()}`}
+      ${tab==='announce'&&html`<${Composer} groups=${groups} groupSize=${groupSize} onSent=${m=>{fire(m);load()}}/>`}
+      ${tab==='inbox'&&html`<${Inbox}/>`}
     </div>
     ${toast&&html`<div style=${{position:'fixed',left:'50%',bottom:24,transform:'translateX(-50%)',background:'#0E1D38',color:'#fff',padding:'10px 16px',borderRadius:999,fontSize:14,maxWidth:'90%',textAlign:'center'}}>${toast}</div>`}
   </div>`}
@@ -259,7 +259,7 @@ function ParentApp({profile,onSignOut}){
       <button onClick=${onSignOut} style=${{background:'transparent',border:'1px solid rgba(255,255,255,.3)',color:'#fff',borderRadius:10,padding:'6px 10px',fontSize:12,cursor:'pointer'}}>Sign out</button></div>
     <div style=${{height:3,background:`linear-gradient(90deg,${C.gold},${C.goldSoft})`}}></div>
     <div style=${{padding:16}}>
-      ${NotifyCard({userId:profile.id,fire})}
+      <${NotifyCard} userId=${profile.id} fire=${fire}/>
       <h2 class="serif" style=${{color:C.navy,margin:'6px 0 2px'}}>Message the school</h2>
       <p class="muted" style=${{fontSize:12,marginTop:0}}>Private — only you and the school office can see this.</p>
       ${cid===undefined?html`<div class="muted">Loading…</div>`:html`<${Thread} conversationId=${cid} isStaff=${false}/>`}
