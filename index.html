@@ -176,15 +176,21 @@ function Dashboard({profile,onSignOut}){
 
 function Composer({groups,groupSize,onSent}){
   const [title,setTitle]=useState('');const [body,setBody]=useState('');const [priority,setPriority]=useState('normal')
-  const [picked,setPicked]=useState([]);const [busy,setBusy]=useState(false)
+  const [picked,setPicked]=useState([]);const [busy,setBusy]=useState(false);const [files,setFiles]=useState([]);const fileRef=React.useRef(null)
   const toggle=id=>setPicked(p=>p.includes(id)?p.filter(x=>x!==id):[...p,id])
   const reach=(()=>{const ch=groups.filter(g=>picked.includes(g.id));if(ch.some(g=>g.kind==='all')){const a=groups.find(g=>g.kind==='all');return a?groupSize(a):0}return ch.reduce((s,g)=>s+groupSize(g),0)})()
   async function publish(){if(!title||!picked.length)return;setBusy(true)
-    const {data,error}=await sb.functions.invoke('send-announcement',{body:{mode:'publish',title,message:body,priority,group_ids:picked}})
+    let atts=[]
+    for(const f of files){const safe=f.name.replace(/[^a-zA-Z0-9._-]/g,'_')
+      const path='announcements/'+((crypto.randomUUID&&crypto.randomUUID())||Date.now())+'-'+safe
+      const {error:ue}=await sb.storage.from('attachments').upload(path,f,{contentType:f.type||'application/octet-stream'})
+      if(ue){setBusy(false);onSent('Upload failed: '+ue.message);return}
+      atts.push({path,name:f.name,type:f.type})}
+    const {data,error}=await sb.functions.invoke('send-announcement',{body:{mode:'publish',title,message:body,priority,group_ids:picked,attachments:atts}})
     setBusy(false)
     if(error){onSent('Error: '+error.message);return}
-    setTitle('');setBody('');setPicked([]);setPriority('normal')
-    onSent(`Posted · ${data.pushed} push to ${data.recipients} parents`+(data.email_ready?` · ${data.emailed} emailed`:' · email pending sender'))}
+    setTitle('');setBody('');setPicked([]);setPriority('normal');setFiles([])
+    onSent(`Posted · ${data.pushed} push to ${data.recipients} parents`+(data.email_ready?` · ${data.emailed} emailed`:' · email pending sender')+(atts.length?` · ${atts.length} file(s)`:''))}
   return html`<div>
     <h2 class="serif" style=${{color:C.navy,marginTop:4}}>New announcement</h2>
     <div class="lbl" style=${{marginTop:10}}>Title</div><input class="in" value=${title} onInput=${e=>setTitle(e.target.value)} placeholder="e.g. Half-term closure"/>
@@ -194,6 +200,10 @@ function Composer({groups,groupSize,onSent}){
       style=${{flex:1,...(priority===k?{background:k==='urgent'?C.urgent:k==='important'?C.gold:C.navy,color:'#fff',borderColor:'transparent'}:{})}} onClick=${()=>setPriority(k)}>${p.label}</button>`)}</div>
     <div class="lbl" style=${{marginTop:12}}>Send to</div>
     <div style=${{display:'flex',flexWrap:'wrap',gap:8,marginTop:6}}>${groups.map(g=>html`<button key=${g.id} class="chip ${picked.includes(g.id)?'on':''}" onClick=${()=>toggle(g.id)}>${g.name} <b style=${{color:picked.includes(g.id)?C.goldSoft:C.muted}}>${groupSize(g)}</b></button>`)}</div>
+    <div class="lbl" style=${{marginTop:12}}>Attachments</div>
+    <input ref=${fileRef} type="file" multiple accept=".pdf,.doc,.docx,image/*,video/*" style=${{display:'none'}} onChange=${e=>{setFiles(f=>[...f,...Array.from(e.target.files)]);e.target.value=''}}/>
+    <button class="btn ghost" style=${{marginTop:6}} onClick=${()=>fileRef.current&&fileRef.current.click()}>📎 Add PDF, Word, image or video</button>
+    <div>${files.map((f,i)=>html`<span key=${i} class="chip" style=${{marginTop:6,marginRight:6,display:'inline-block'}}>📎 ${f.name} <span style=${{cursor:'pointer',fontWeight:700}} onClick=${()=>setFiles(x=>x.filter((_,j)=>j!==i))}> ✕</span></span>`)}</div>
     <div class="card" style=${{background:C.navy,color:'#fff',display:'flex',justifyContent:'space-between',alignItems:'center',padding:'12px 16px',marginTop:16,border:'none'}}>
       <div><div style=${{fontSize:11,color:'#AEBAD0'}}>Will reach</div><div class="serif" style=${{fontSize:18,fontWeight:700}}>${reach} pupils' parents</div></div>
       <button class="btn gold" style=${{width:'auto'}} disabled=${busy||!title||!picked.length} onClick=${publish}>${busy?'Sending…':'Publish'}</button></div>
