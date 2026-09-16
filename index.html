@@ -140,8 +140,8 @@ function Dashboard({profile,onSignOut}){
         <div style=${{color:'#AEBAD0',fontSize:10}}>Al Jamiatul Islamiyah</div></div></div>
       <button onClick=${onSignOut} style=${{background:'transparent',border:'1px solid rgba(255,255,255,.3)',color:'#fff',borderRadius:10,padding:'6px 10px',fontSize:12,cursor:'pointer'}}>Sign out</button></div>
     <div style=${{height:3,background:`linear-gradient(90deg,${C.gold},${C.goldSoft})`}}></div>
-    <div style=${{padding:'8px 16px 0',display:'flex',gap:8}}>${['overview','pupils','announce','inbox'].map(t=>html`
-      <button key=${t} onClick=${()=>setTab(t)} class="chip ${tab===t?'on':''}">${t==='overview'?'Overview':t==='pupils'?'Pupils':t==='announce'?'Announce':'Inbox'}</button>`)}</div>
+    <div style=${{padding:'8px 16px 0',display:'flex',gap:8,flexWrap:'wrap'}}>${['overview','pupils','attendance','announce','inbox'].map(t=>html`
+      <button key=${t} onClick=${()=>setTab(t)} class="chip ${tab===t?'on':''}">${t==='overview'?'Overview':t==='pupils'?'Pupils':t==='attendance'?'Attendance':t==='announce'?'Announce':'Inbox'}</button>`)}</div>
     <div style=${{padding:16}}>
       ${pupils===null&&html`<div class="muted">Loading live data…</div>`}
       ${tab==='overview'&&pupils&&html`<div>
@@ -169,6 +169,7 @@ function Dashboard({profile,onSignOut}){
       </div>`}
       ${tab==='announce'&&html`<${Composer} groups=${groups} groupSize=${groupSize} onSent=${m=>{fire(m);load()}}/>`}
       ${tab==='inbox'&&html`<${Inbox}/>`}
+      ${tab==='attendance'&&html`<${Attendance} profile=${profile}/>`}
     </div>
     ${toast&&html`<div style=${{position:'fixed',left:'50%',bottom:24,transform:'translateX(-50%)',background:'#0E1D38',color:'#fff',padding:'10px 16px',borderRadius:999,fontSize:14,maxWidth:'90%',textAlign:'center'}}>${toast}</div>`}
   </div>`}
@@ -204,7 +205,8 @@ function fmtTime(t){try{return new Date(t).toLocaleString([],{day:'numeric',mont
 function Thread({conversationId,isStaff,onBack}){
   const [cid,setCid]=useState(conversationId)
   const [msgs,setMsgs]=useState([]);const [text,setText]=useState('');const [busy,setBusy]=useState(false)
-  const box=React.useRef(null)
+  const [file,setFile]=useState(null);const [urls,setUrls]=useState({})
+  const box=React.useRef(null);const fileRef=React.useRef(null)
   useEffect(()=>setCid(conversationId),[conversationId])
   async function load(id){const c=id||cid;if(!c){setMsgs([]);return}
     const {data}=await sb.from('messages').select('*').eq('conversation_id',c).order('created_at');setMsgs(data||[])}
@@ -213,23 +215,40 @@ function Thread({conversationId,isStaff,onBack}){
     const ch=sb.channel('t'+cid).on('postgres_changes',{event:'INSERT',schema:'parent_hub',table:'messages',filter:'conversation_id=eq.'+cid},p=>setMsgs(m=>m.some(x=>x.id===p.new.id)?m:[...m,p.new])).subscribe()
     return ()=>sb.removeChannel(ch)},[cid])
   useEffect(()=>{if(box.current)box.current.scrollTop=box.current.scrollHeight},[msgs])
-  async function send(){const b=text.trim();if(!b)return;setBusy(true);setText('')
-    const {data,error}=await sb.functions.invoke('send-message',{body:cid?{conversation_id:cid,body:b}:{body:b}})
+  useEffect(()=>{msgs.forEach(async m=>{if(m.attachment_path&&!urls[m.attachment_path]){
+    const {data}=await sb.storage.from('attachments').createSignedUrl(m.attachment_path,3600)
+    if(data&&data.signedUrl)setUrls(u=>({...u,[m.attachment_path]:data.signedUrl}))}})},[msgs])
+  async function send(){const b=text.trim();if(!b&&!file)return;setBusy(true)
+    let ap=null,an=null,at=null
+    if(file){const safe=file.name.replace(/[^a-zA-Z0-9._-]/g,'_')
+      const path=(cid||'new')+'/'+((crypto.randomUUID&&crypto.randomUUID())||Date.now())+'-'+safe
+      const {error:upErr}=await sb.storage.from('attachments').upload(path,file,{contentType:file.type||'application/octet-stream'})
+      if(upErr){setBusy(false);alert('Upload failed: '+upErr.message);return}
+      ap=path;an=file.name;at=file.type}
+    setText('');setFile(null)
+    const {data,error}=await sb.functions.invoke('send-message',{body:{...(cid?{conversation_id:cid}:{}),body:b,attachment_path:ap,attachment_name:an,attachment_type:at}})
     setBusy(false)
     if(error){setText(b);return}
     if(!cid&&data&&data.conversation_id){setCid(data.conversation_id);load(data.conversation_id)}else load()}
+  function att(m){if(!m.attachment_path)return null
+    const url=urls[m.attachment_path];const isImg=(m.attachment_type||'').startsWith('image/')
+    if(isImg)return html`<div style=${{marginTop:6}}>${url?html`<a href=${url} target="_blank"><img src=${url} style=${{maxWidth:'100%',borderRadius:8}}/></a>`:html`<span style=${{fontSize:12,opacity:.7}}>loading image…</span>`}</div>`
+    return html`<a href=${url||'#'} target="_blank" style=${{display:'inline-flex',gap:6,alignItems:'center',marginTop:6,fontSize:13,textDecoration:'underline',color:'inherit'}}>📎 ${m.attachment_name||'file'}</a>`}
   return html`<div style=${{display:'flex',flexDirection:'column',height:'68vh'}}>
     ${onBack&&html`<button class="chip" style=${{alignSelf:'flex-start',marginBottom:8}} onClick=${onBack}>← Back to inbox</button>`}
     <div ref=${box} style=${{flex:1,overflowY:'auto',display:'flex',flexDirection:'column',gap:8,padding:'4px 2px'}}>
       ${msgs.length===0&&html`<div class="muted" style=${{textAlign:'center',marginTop:24}}>No messages yet.</div>`}
       ${msgs.map(m=>{const mine=((m.sender_role==='staff')===isStaff)
         return html`<div key=${m.id} style=${{alignSelf:mine?'flex-end':'flex-start',maxWidth:'82%'}}>
-          <div style=${{background:mine?C.navy:'#fff',color:mine?'#fff':C.ink,border:mine?'none':'1px solid '+C.line,borderRadius:14,padding:'8px 12px',fontSize:14,whiteSpace:'pre-wrap'}}>${m.body}</div>
+          <div style=${{background:mine?C.navy:'#fff',color:mine?'#fff':C.ink,border:mine?'none':'1px solid '+C.line,borderRadius:14,padding:'8px 12px',fontSize:14,whiteSpace:'pre-wrap'}}>${m.body}${att(m)}</div>
           <div class="muted" style=${{fontSize:10,marginTop:2,textAlign:mine?'right':'left'}}>${m.sender_role==='staff'?'School':'Parent'} · ${fmtTime(m.created_at)}</div></div>`})}
     </div>
-    <div style=${{display:'flex',gap:8,marginTop:8}}>
+    ${file&&html`<div class="chip" style=${{alignSelf:'flex-start',margin:'6px 0'}}>📎 ${file.name} <span style=${{cursor:'pointer',fontWeight:700}} onClick=${()=>setFile(null)}> ✕</span></div>`}
+    <div style=${{display:'flex',gap:8,marginTop:8,alignItems:'center'}}>
+      <input ref=${fileRef} type="file" style=${{display:'none'}} onChange=${e=>setFile(e.target.files[0]||null)}/>
+      <button class="btn ghost" style=${{width:'auto',padding:'10px 13px'}} onClick=${()=>fileRef.current&&fileRef.current.click()}>📎</button>
       <input class="in" style=${{marginTop:0}} value=${text} onInput=${e=>setText(e.target.value)} onKeyDown=${e=>e.key==='Enter'&&send()} placeholder="Type a message…"/>
-      <button class="btn" style=${{width:'auto'}} disabled=${busy||!text.trim()} onClick=${send}>Send</button></div>
+      <button class="btn" style=${{width:'auto'}} disabled=${busy||(!text.trim()&&!file)} onClick=${send}>${busy?'…':'Send'}</button></div>
   </div>`}
 
 function Inbox(){
@@ -265,6 +284,75 @@ function ParentApp({profile,onSignOut}){
       ${cid===undefined?html`<div class="muted">Loading…</div>`:html`<${Thread} conversationId=${cid} isStaff=${false}/>`}
     </div>
     ${toast&&html`<div style=${{position:'fixed',left:'50%',bottom:24,transform:'translateX(-50%)',background:'#0E1D38',color:'#fff',padding:'10px 16px',borderRadius:999,fontSize:14}}>${toast}</div>`}
+  </div>`}
+
+function Attendance({profile}){
+  const today=new Date().toISOString().slice(0,10)
+  const [date,setDate]=useState(today);const [phase,setPhase]=useState('morning')
+  const [pupils,setPupils]=useState(null);const [rec,setRec]=useState({});const [codes,setCodes]=useState([])
+  const [q,setQ]=useState('');const [tab,setTab]=useState('mark');const [busy,setBusy]=useState(false);const [toast,setToast]=useState('')
+  const fire=m=>{setToast(m);setTimeout(()=>setToast(''),2800)}
+  async function loadPupils(){const {data}=await sb.from('pupils').select('id,first_name,last_name,academic_year,morning_class,boarding_status').eq('is_active',true).order('last_name');setPupils(data||[])}
+  async function loadCodes(){const {data}=await sb.from('attendance_codes').select('*').order('sort');setCodes(data||[])}
+  async function loadRecords(){const {data}=await sb.from('attendance').select('pupil_id,status,absence_code').eq('on_date',date).eq('phase',phase)
+    const m={};(data||[]).forEach(r=>m[r.pupil_id]={status:r.status,code:r.absence_code});setRec(m)}
+  useEffect(()=>{loadPupils();loadCodes()},[])
+  useEffect(()=>{loadRecords()},[date,phase])
+  useEffect(()=>{const ch=sb.channel('att-'+date+'-'+phase).on('postgres_changes',{event:'*',schema:'parent_hub',table:'attendance',filter:'on_date=eq.'+date},()=>loadRecords()).subscribe();return()=>sb.removeChannel(ch)},[date,phase])
+  const statusOf=id=>(rec[id]&&rec[id].status)||'present'
+  function toggle(id){setRec(r=>{const cur=(r[id]&&r[id].status)||'present';return {...r,[id]:{...(r[id]||{}),status:cur==='present'?'absent':'present'}}})}
+  const total=pupils?pupils.length:0
+  const absent=pupils?pupils.filter(p=>statusOf(p.id)==='absent').length:0
+  const present=total-absent
+  const filtered=pupils?pupils.filter(p=>(p.first_name+' '+p.last_name).toLowerCase().includes(q.toLowerCase())):[]
+  const absentees=pupils?pupils.filter(p=>statusOf(p.id)==='absent'):[]
+  async function save(){setBusy(true)
+    const rows=pupils.map(p=>({pupil_id:p.id,on_date:date,phase,status:statusOf(p.id),logged_by:profile.id}))
+    const {error}=await sb.from('attendance').upsert(rows,{onConflict:'pupil_id,on_date,phase'})
+    setBusy(false);fire(error?('Error: '+error.message):`Register saved — ${present} present, ${absent} absent`)}
+  async function setCode(pid,code){
+    await sb.from('attendance').upsert({pupil_id:pid,on_date:date,phase,status:'absent',absence_code:code||null,logged_by:profile.id},{onConflict:'pupil_id,on_date,phase'})
+    setRec(r=>({...r,[pid]:{status:'absent',code}}))}
+  function exportCsv(){
+    const rows=[['Date','Session','Pupil','Year','Class','Boarding','Status','Absence code']]
+    ;(pupils||[]).forEach(p=>{const s=statusOf(p.id);const c=(rec[p.id]&&rec[p.id].code)||''
+      rows.push([date,phase,p.first_name+' '+p.last_name,p.academic_year||'',p.morning_class||'',p.boarding_status||'',s,s==='absent'?c:''])})
+    const csv=rows.map(r=>r.map(x=>'"'+(x||'').toString().replace(/"/g,'""')+'"').join(',')).join('\n')
+    const url=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));const a=document.createElement('a');a.href=url;a.download='register_'+date+'_'+phase+'.csv';a.click();URL.revokeObjectURL(url)}
+  return html`<div>
+    <div style=${{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
+      <input class="in" type="date" style=${{marginTop:0,width:'auto'}} value=${date} onInput=${e=>setDate(e.target.value)}/>
+      ${['morning','afternoon'].map(ph=>html`<button key=${ph} class="chip ${phase===ph?'on':''}" onClick=${()=>setPhase(ph)}>${ph==='morning'?'Morning':'Afternoon'}</button>`)}
+    </div>
+    <div class="card" style=${{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'12px 16px',marginTop:12,background:C.navy,color:'#fff',border:'none'}}>
+      <div><div style=${{fontSize:11,color:'#AEBAD0'}}>In the Darul Uloom now · ${phase}</div><div class="serif" style=${{fontSize:24,fontWeight:700}}>${present} / ${total}</div></div>
+      <div style=${{textAlign:'right'}}><div style=${{fontSize:11,color:'#AEBAD0'}}>Absent</div><div class="serif" style=${{fontSize:24,fontWeight:700,color:C.goldSoft}}>${absent}</div></div>
+    </div>
+    <div style=${{display:'flex',gap:8,marginTop:12,alignItems:'center'}}>
+      ${['mark','absentees'].map(t=>html`<button key=${t} class="chip ${tab===t?'on':''}" onClick=${()=>setTab(t)}>${t==='mark'?'Mark register':'Absentees & codes'}</button>`)}
+      <button class="chip" style=${{marginLeft:'auto'}} onClick=${exportCsv}>⤓ CSV</button>
+    </div>
+    ${pupils===null&&html`<div class="muted" style=${{marginTop:12}}>Loading…</div>`}
+    ${tab==='mark'&&pupils&&html`<div style=${{marginTop:12}}>
+      <input class="in" placeholder="Search pupils…" value=${q} onInput=${e=>setQ(e.target.value)} style=${{marginBottom:10}}/>
+      <div class="muted" style=${{fontSize:11,marginBottom:8}}>Everyone starts as present — tap a pupil to mark absent, then Save.</div>
+      ${filtered.map(p=>{const ab=statusOf(p.id)==='absent'
+        return html`<div key=${p.id} class="card" style=${{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'8px 12px',marginBottom:6,cursor:'pointer'}} onClick=${()=>toggle(p.id)}>
+          <div><b>${p.first_name} ${p.last_name}</b><div class="muted" style=${{fontSize:11}}>${p.academic_year||'—'} · ${p.morning_class||'—'}</div></div>
+          <span class="tag" style=${{background:ab?C.urgentSoft:'#E5EEE7',color:ab?C.urgent:C.green,padding:'6px 12px'}}>${ab?'Absent':'Present'}</span></div>`})}
+      <button class="btn" style=${{marginTop:10}} disabled=${busy} onClick=${save}>${busy?'Saving…':'Save register'}</button>
+    </div>`}
+    ${tab==='absentees'&&pupils&&html`<div style=${{marginTop:12}}>
+      <div class="muted" style=${{fontSize:11,marginBottom:8}}>After chasing up an absence, set the reason code here.</div>
+      ${absentees.length===0&&html`<div class="card muted" style=${{padding:16}}>No one marked absent for this session.</div>`}
+      ${absentees.map(p=>html`<div key=${p.id} class="card" style=${{padding:'10px 12px',marginBottom:6}}>
+        <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center'}}><b>${p.first_name} ${p.last_name}</b><span class="muted" style=${{fontSize:11}}>${p.academic_year||''}</span></div>
+        <select class="in" style=${{marginTop:8,padding:'8px'}} value=${(rec[p.id]&&rec[p.id].code)||''} onChange=${e=>setCode(p.id,e.target.value)}>
+          <option value="">— reason not set —</option>
+          ${codes.map(c=>html`<option key=${c.code} value=${c.code}>${c.code} · ${c.label}</option>`)}
+        </select></div>`)}
+    </div>`}
+    ${toast&&html`<div style=${{position:'fixed',left:'50%',bottom:24,transform:'translateX(-50%)',background:'#0E1D38',color:'#fff',padding:'10px 16px',borderRadius:999,fontSize:14,maxWidth:'90%',textAlign:'center'}}>${toast}</div>`}
   </div>`}
 
 function App(){
