@@ -302,26 +302,31 @@ function Attendance({profile}){
   const [session,setSession]=useState('morning')
   const [reg,setReg]=useState(null)
   const [pupils,setPupils]=useState(null);const [classes,setClasses]=useState([]);const [enrol,setEnrol]=useState({})
-  const [codes,setCodes]=useState([]);const [rec,setRec]=useState({})
+  const [codes,setCodes]=useState([]);const [rec,setRec]=useState({});const [access,setAccess]=useState(null);const [myClasses,setMyClasses]=useState([])
   const [q,setQ]=useState('');const [view,setView]=useState('mark');const [busy,setBusy]=useState(false);const [toast,setToast]=useState('')
   const fire=m=>{setToast(m);setTimeout(()=>setToast(''),2800)}
   useEffect(()=>{(async()=>{
-    const [p,c,e,cd]=await Promise.all([
+    const [p,c,e,cd,ac,ct]=await Promise.all([
       sb.from('pupils').select('id,first_name,last_name,academic_year,morning_class,boarding_status').eq('is_active',true).order('last_name'),
       sb.from('classes').select('id,name,phase').eq('phase','morning'),
       sb.from('class_enrolments').select('class_id,pupil_id'),
-      sb.from('attendance_codes').select('*').order('sort')])
-    setPupils(p.data||[]);setClasses(c.data||[]);setCodes(cd.data||[])
+      sb.from('attendance_codes').select('*').order('sort'),
+      sb.from('staff_access').select('*').eq('user_id',profile.id).maybeSingle(),
+      sb.from('class_teachers').select('class_id').eq('user_id',profile.id)])
+    setPupils(p.data||[]);setClasses(c.data||[]);setCodes(cd.data||[]);setAccess(ac.data||{});setMyClasses((ct.data||[]).map(x=>x.class_id))
     const m={};(e.data||[]).forEach(r=>{(m[r.class_id]=m[r.class_id]||[]).push(r.pupil_id)});setEnrol(m)
   })()},[])
   async function loadRecords(){const {data}=await sb.from('attendance').select('pupil_id,status,absence_code').eq('on_date',date).eq('phase',session)
     const m={};(data||[]).forEach(r=>m[r.pupil_id]={status:r.status,code:r.absence_code});setRec(m)}
   useEffect(()=>{loadRecords();setReg(null)},[date,session])
   useEffect(()=>{const ch=sb.channel('att-'+date).on('postgres_changes',{event:'*',schema:'parent_hub',table:'attendance',filter:'on_date=eq.'+date},()=>loadRecords()).subscribe();return()=>sb.removeChannel(ch)},[date])
+  const isFull=profile.role==='admin'||(access&&access.is_full)
+  const canSess=s=>isFull||(s==='morning'?myClasses.length>0:s==='afternoon'?(access&&access.reg_afternoon):s==='evening'?(access&&access.reg_evening):(access&&access.reg_night))
+  useEffect(()=>{if(access!==null){const first=['morning','afternoon','evening','night'].find(canSess);if(first&&!canSess(session))setSession(first)}},[access,myClasses])
   const yearOrder=['Year 7','Year 8','Year 9','Year 10','Year 11','Post-16','Over-18']
   function registers(){
     if(!pupils)return []
-    if(session==='morning')return classes.slice().sort((a,b)=>a.name.localeCompare(b.name)).map(c=>({key:c.id,name:c.name,ids:enrol[c.id]||[]}))
+    if(session==='morning'){const cs=isFull?classes:classes.filter(c=>myClasses.includes(c.id));return cs.slice().sort((a,b)=>a.name.localeCompare(b.name)).map(c=>({key:c.id,name:c.name,ids:enrol[c.id]||[]}))}
     if(session==='afternoon'){const ys=[...new Set(pupils.map(p=>p.academic_year).filter(Boolean))].sort((a,b)=>yearOrder.indexOf(a)-yearOrder.indexOf(b))
       return ys.map(y=>({key:y,name:y,ids:pupils.filter(p=>p.academic_year===y).map(p=>p.id)}))}
     const bd=pupils.filter(p=>p.boarding_status==='Boarding').map(p=>p.id)
@@ -354,7 +359,7 @@ function Attendance({profile}){
   return html`<div>
     <div style=${{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
       <input class="in" type="date" style=${{marginTop:0,width:'auto'}} value=${date} onInput=${e=>setDate(e.target.value)}/>
-      ${SESS.map(([k,lbl])=>html`<button key=${k} class="chip ${session===k?'on':''}" onClick=${()=>setSession(k)}>${lbl}</button>`)}
+      ${SESS.filter(([k])=>canSess(k)).map(([k,lbl])=>html`<button key=${k} class="chip ${session===k?'on':''}" onClick=${()=>setSession(k)}>${lbl}</button>`)}
     </div>
     <div class="card" style=${{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'12px 16px',marginTop:12,background:C.navy,color:'#fff',border:'none'}}>
       <div><div style=${{fontSize:11,color:'#AEBAD0'}}>Present now - ${session}${session==='evening'||session==='night'?' (boarders)':''}</div><div class="serif" style=${{fontSize:24,fontWeight:700}}>${sPresent} / ${sTotal}</div></div>
