@@ -77,10 +77,8 @@ function Login(){
   const [email,setEmail]=useState('');const [pw,setPw]=useState('');const [err,setErr]=useState('');const [busy,setBusy]=useState(false)
   async function go(){setBusy(true);setErr('');const {error}=await sb.auth.signInWithPassword({email:email.trim(),password:pw});setBusy(false);if(error)setErr(error.message)}
   return html`<div class="center"><div style=${{width:'100%',maxWidth:380,textAlign:'center'}}>
-    <div style=${{display:'flex',justifyContent:'center'}}>${Crest({size:64})}</div>
-    <div class="serif" style=${{color:C.gold,fontSize:24,marginTop:10,direction:'rtl'}}>الجامعة الإسلامية</div>
-    <div class="serif" style=${{color:C.navy,fontSize:20,fontWeight:700,marginTop:2}}>Al Jamiatul Islamiyah</div>
-    <div class="muted" style=${{fontSize:10,letterSpacing:'.18em',fontWeight:600}}>BOLTON DARUL ULOOM · PARENT HUB</div>
+    <img src="/logo.png" alt="Al Jamiatul Islamiyah — Bolton Darul Uloom" style=${{width:'min(300px,76vw)',height:'auto',margin:'0 auto',display:'block'}}/>
+    <div class="muted" style=${{fontSize:10,letterSpacing:'.22em',fontWeight:600,marginTop:8}}>SCHOOL COMMUNICATION PORTAL</div>
     <div class="card" style=${{padding:20,marginTop:22,textAlign:'left'}}>
       <div class="lbl">Email</div><input class="in" value=${email} onInput=${e=>setEmail(e.target.value)} placeholder="you@example.com"/>
       <div class="lbl" style=${{marginTop:12}}>Password</div><input class="in" type="password" value=${pw} onInput=${e=>setPw(e.target.value)} onKeyDown=${e=>e.key==='Enter'&&go()}/>
