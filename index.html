@@ -314,8 +314,8 @@ function Attendance({profile}){
     setPupils(p.data||[]);setClasses(c.data||[]);setCodes(cd.data||[]);setAccess(ac.data||{});setMyClasses((ct.data||[]).map(x=>x.class_id))
     const m={};(e.data||[]).forEach(r=>{(m[r.class_id]=m[r.class_id]||[]).push(r.pupil_id)});setEnrol(m)
   })()},[])
-  async function loadRecords(){const {data}=await sb.from('attendance').select('pupil_id,status,absence_code').eq('on_date',date).eq('phase',session)
-    const m={};(data||[]).forEach(r=>m[r.pupil_id]={status:r.status,code:r.absence_code});setRec(m)}
+  async function loadRecords(){const {data}=await sb.from('attendance').select('pupil_id,status,absence_code,late_notified_at').eq('on_date',date).eq('phase',session)
+    const m={};(data||[]).forEach(r=>m[r.pupil_id]={status:r.status,code:r.absence_code,notified:r.late_notified_at});setRec(m)}
   useEffect(()=>{loadRecords();setReg(null)},[date,session])
   useEffect(()=>{const ch=sb.channel('att-'+date).on('postgres_changes',{event:'*',schema:'parent_hub',table:'attendance',filter:'on_date=eq.'+date},()=>loadRecords()).subscribe();return()=>sb.removeChannel(ch)},[date])
   const isFull=profile.role==='admin'||(access&&access.is_full)
@@ -334,13 +334,21 @@ function Attendance({profile}){
   const current=regs.find(r=>r.key===reg)||null
   const byId={};(pupils||[]).forEach(p=>byId[p.id]=p)
   const statusOf=id=>(rec[id]&&rec[id].status)||'present'
-  function toggle(id){setRec(r=>{const cur=(r[id]&&r[id].status)||'present';return {...r,[id]:{...(r[id]||{}),status:cur==='present'?'absent':'present'}}})}
+  const LATE_CUTOFF={morning:'08:20',afternoon:'13:15',evening:'18:05'}
+  function minsLate(){const c=LATE_CUTOFF[session];if(!c)return 1;const p=c.split(':');const cut=new Date();cut.setHours(+p[0],+p[1],0,0);return Math.max(1,Math.round((Date.now()-cut.getTime())/60000))}
+  function toggle(id){setRec(r=>{const cur=(r[id]&&r[id].status)||'present';const nx=cur==='present'?'late':cur==='late'?'absent':'present';return {...r,[id]:{...(r[id]||{}),status:nx}}})}
   const allIds=[...new Set(regs.flatMap(r=>r.ids))]
-  const sTotal=allIds.length,sAbsent=allIds.filter(id=>statusOf(id)==='absent').length,sPresent=sTotal-sAbsent
+  const sTotal=allIds.length,sAbsent=allIds.filter(id=>statusOf(id)==='absent').length,sLate=allIds.filter(id=>statusOf(id)==='late').length,sPresent=sTotal-sAbsent-sLate
   async function save(){if(!current)return;setBusy(true)
     const rows=current.ids.map(id=>({pupil_id:id,on_date:date,phase:session,class_id:session==='morning'?current.key:null,status:statusOf(id),logged_by:profile.id}))
     const {error}=await sb.from('attendance').upsert(rows,{onConflict:'pupil_id,on_date,phase'})
-    setBusy(false);fire(error?('Error: '+error.message):'Register saved')}
+    let note=''
+    if(!error&&date===today&&LATE_CUTOFF[session]){
+      const lateIds=current.ids.filter(id=>statusOf(id)==='late'&&!(rec[id]&&rec[id].notified))
+      if(lateIds.length){const {data,error:e2}=await sb.functions.invoke('notify-late',{body:{pupil_ids:lateIds,phase:session,minutes:minsLate(),on_date:date}})
+        if(!e2&&data&&data.notified)note=' · '+data.notified+' parent alert'+(data.notified===1?'':'s')+' sent'}
+    }
+    setBusy(false);fire(error?('Error: '+error.message):('Register saved'+note));if(!error)loadRecords()}
   async function setCode(id,code){
     await sb.from('attendance').upsert({pupil_id:id,on_date:date,phase:session,status:'absent',absence_code:code||null,logged_by:profile.id},{onConflict:'pupil_id,on_date,phase'})
     setRec(r=>({...r,[id]:{status:'absent',code}}))}
@@ -360,7 +368,8 @@ function Attendance({profile}){
       ${SESS.filter(([k])=>canSess(k)).map(([k,lbl])=>html`<button key=${k} class="chip ${session===k?'on':''}" onClick=${()=>setSession(k)}>${lbl}</button>`)}
     </div>
     <div class="card" style=${{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'12px 16px',marginTop:12,background:C.navy,color:'#fff',border:'none'}}>
-      <div><div style=${{fontSize:11,color:'#AEBAD0'}}>Present now - ${session}${session==='evening'||session==='night'?' (boarders)':''}</div><div class="serif" style=${{fontSize:24,fontWeight:700}}>${sPresent} / ${sTotal}</div></div>
+      <div><div style=${{fontSize:11,color:'#AEBAD0'}}>Present - ${session}${session==='evening'||session==='night'?' (boarders)':''}</div><div class="serif" style=${{fontSize:24,fontWeight:700}}>${sPresent} / ${sTotal}</div></div>
+      <div style=${{textAlign:'center'}}><div style=${{fontSize:11,color:'#AEBAD0'}}>Late</div><div class="serif" style=${{fontSize:24,fontWeight:700,color:'#E9C46A'}}>${sLate}</div></div>
       <div style=${{textAlign:'right'}}><div style=${{fontSize:11,color:'#AEBAD0'}}>Absent</div><div class="serif" style=${{fontSize:24,fontWeight:700,color:C.goldSoft}}>${sAbsent}</div></div>
     </div>
     ${pupils===null&&html`<div class="muted" style=${{marginTop:12}}>Loading...</div>`}
@@ -378,11 +387,11 @@ function Attendance({profile}){
       <div style=${{display:'flex',gap:8,marginBottom:10}}>${['mark','absentees'].map(v=>html`<button key=${v} class="chip ${view===v?'on':''}" onClick=${()=>setView(v)}>${v==='mark'?'Mark':'Absentees & codes'}</button>`)}</div>
       ${view==='mark'&&html`<div>
         <input class="in" placeholder="Search..." value=${q} onInput=${e=>setQ(e.target.value)} style=${{marginBottom:10}}/>
-        <div class="muted" style=${{fontSize:11,marginBottom:8}}>Everyone starts present - tap to mark absent, then Save.</div>
-        ${list.map(p=>{const ab=statusOf(p.id)==='absent'
+        <div class="muted" style=${{fontSize:11,marginBottom:8}}>Everyone starts present - tap to cycle Present → Late → Absent, then Save. Marking a pupil Late alerts their parents automatically.</div>
+        ${list.map(p=>{const st=statusOf(p.id);const sc=st==='absent'?{bg:C.urgentSoft,fg:C.urgent,t:'Absent'}:st==='late'?{bg:'#FBECC9',fg:'#8A6D1B',t:'Late'}:{bg:'#E5EEE7',fg:C.green,t:'Present'}
           return html`<div key=${p.id} class="card" style=${{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'8px 12px',marginBottom:6,cursor:'pointer'}} onClick=${()=>toggle(p.id)}>
             <div><b>${p.first_name} ${p.last_name}</b><div class="muted" style=${{fontSize:11}}>${p.academic_year||'-'}</div></div>
-            <span class="tag" style=${{background:ab?C.urgentSoft:'#E5EEE7',color:ab?C.urgent:C.green,padding:'6px 12px'}}>${ab?'Absent':'Present'}</span></div>`})}
+            <span class="tag" style=${{background:sc.bg,color:sc.fg,padding:'6px 12px'}}>${sc.t}</span></div>`})}
         <button class="btn" style=${{marginTop:10}} disabled=${busy} onClick=${save}>${busy?'Saving...':'Save register'}</button>
       </div>`}
       ${view==='absentees'&&html`<div>
