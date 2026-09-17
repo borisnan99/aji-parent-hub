@@ -317,7 +317,7 @@ function Attendance({profile}){
   async function loadRecords(){const {data}=await sb.from('attendance').select('pupil_id,status,absence_code,late_notified_at').eq('on_date',date).eq('phase',session)
     const m={};(data||[]).forEach(r=>m[r.pupil_id]={status:r.status,code:r.absence_code,notified:r.late_notified_at});setRec(m)}
   useEffect(()=>{loadRecords();setReg(null)},[date,session])
-  useEffect(()=>{const ch=sb.channel('att-'+date).on('postgres_changes',{event:'*',schema:'parent_hub',table:'attendance',filter:'on_date=eq.'+date},()=>loadRecords()).subscribe();return()=>sb.removeChannel(ch)},[date])
+  useEffect(()=>{const ch=sb.channel('att-'+date+'-'+session).on('postgres_changes',{event:'*',schema:'parent_hub',table:'attendance',filter:'on_date=eq.'+date},()=>loadRecords()).subscribe();return()=>sb.removeChannel(ch)},[date,session])
   const isFull=profile.role==='admin'||(access&&access.is_full)
   const canSess=s=>isFull||(s==='morning'?myClasses.length>0:s==='afternoon'?(access&&access.reg_afternoon):s==='evening'?(access&&access.reg_evening):(access&&access.reg_night))
   useEffect(()=>{if(access!==null){const first=['morning','afternoon','evening','night'].find(canSess);if(first&&!canSess(session))setSession(first)}},[access,myClasses])
