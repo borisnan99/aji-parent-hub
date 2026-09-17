@@ -109,8 +109,19 @@ JazakAllahu khairan for your cooperation in this matter.`;
         notified++;
       }
 
-      // 2) detention trigger — MORNING lates only, Mon–Fri window
+      // 2) detention trigger — MORNING lates only, Mon–Fri window.
+      // Exclude pupils whose morning class runs on Saturday (Arbi Sowm / Chahaarum):
+      // a Saturday detention is no consequence for them.
+      let satClass = false;
       if (phase === "morning") {
+        const { data: enr } = await svc.from("class_enrolments").select("class_id").eq("pupil_id", pid);
+        const classIds = (enr ?? []).map((e: any) => e.class_id);
+        if (classIds.length) {
+          const { data: cls } = await svc.from("classes").select("saturday_class").in("id", classIds);
+          satClass = (cls ?? []).some((c: any) => c.saturday_class);
+        }
+      }
+      if (phase === "morning" && !satClass) {
         const d = new Date(date + "T00:00:00Z");
         const dow = d.getUTCDay();                 // 0 Sun .. 6 Sat
         const toMon = dow === 0 ? -6 : 1 - dow;
