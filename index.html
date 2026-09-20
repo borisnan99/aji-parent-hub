@@ -113,9 +113,52 @@ function Stat({n,label,sub}){return html`<div class="card" style=${{padding:16,f
   <div class="serif" style=${{color:C.navy,fontSize:26,fontWeight:700,lineHeight:1}}>${n}</div>
   <div style=${{fontSize:12,fontWeight:600,marginTop:6}}>${label}</div><div class="muted" style=${{fontSize:11}}>${sub||''}</div></div>`}
 
+function PupilEditor({pupil,classes,onClose,onSaved}){
+  const isNew=!pupil.id
+  const [fn,setFn]=useState(pupil.first_name||'');const [ln,setLn]=useState(pupil.last_name||'')
+  const [adm,setAdm]=useState(pupil.admission_no||'');const [yr,setYr]=useState(pupil.academic_year||'Year 7')
+  const [mc,setMc]=useState(pupil.morning_class||(classes[0]&&classes[0].name)||'')
+  const [bs,setBs]=useState(pupil.boarding_status||'Boarding');const [active,setActive]=useState(pupil.is_active!==false)
+  const [busy,setBusy]=useState(false);const [err,setErr]=useState('')
+  const YEARS=['Year 7','Year 8','Year 9','Year 10','Year 11','Post-16','Over-18']
+  async function save(){
+    if(!fn.trim()||!ln.trim()){setErr('First and last name are required');return}
+    setBusy(true);setErr('')
+    const payload={first_name:fn.trim(),last_name:ln.trim(),admission_no:adm.trim()||null,academic_year:yr,morning_class:mc,boarding_status:bs,is_active:active}
+    let pid=pupil.id
+    if(isNew){const {data,error}=await sb.from('pupils').insert(payload).select('id').single();if(error){setBusy(false);setErr(error.message);return}pid=data.id}
+    else{const {error}=await sb.from('pupils').update(payload).eq('id',pid);if(error){setBusy(false);setErr(error.message);return}}
+    const cls=classes.find(c=>c.name===mc)
+    if(cls){const {data:ex}=await sb.from('class_enrolments').select('class_id').eq('pupil_id',pid)
+      if(ex&&ex.length){if(ex[0].class_id!==cls.id)await sb.from('class_enrolments').update({class_id:cls.id}).eq('pupil_id',pid)}
+      else await sb.from('class_enrolments').insert({class_id:cls.id,pupil_id:pid})}
+    setBusy(false);onSaved(isNew?'Pupil added':'Pupil updated')}
+  return html`<div style=${{position:'fixed',inset:0,background:'rgba(10,18,35,.55)',display:'flex',alignItems:'flex-end',justifyContent:'center',zIndex:50}} onClick=${onClose}>
+    <div class="card" style=${{background:'#fff',width:'100%',maxWidth:560,borderRadius:'18px 18px 0 0',padding:18,maxHeight:'88vh',overflowY:'auto'}} onClick=${e=>e.stopPropagation()}>
+      <h2 class="serif" style=${{color:C.navy,margin:'2px 0 12px'}}>${isNew?'Add pupil':'Edit pupil'}</h2>
+      <div style=${{display:'flex',gap:10}}>
+        <div style=${{flex:1}}><div class="lbl">First name</div><input class="in" value=${fn} onInput=${e=>setFn(e.target.value)}/></div>
+        <div style=${{flex:1}}><div class="lbl">Last name</div><input class="in" value=${ln} onInput=${e=>setLn(e.target.value)}/></div></div>
+      <div class="lbl" style=${{marginTop:12}}>Admission no.</div><input class="in" value=${adm} onInput=${e=>setAdm(e.target.value)} placeholder="e.g. 9240123"/>
+      <div class="lbl" style=${{marginTop:12}}>School year</div>
+      <select class="in" value=${yr} onChange=${e=>setYr(e.target.value)}>${YEARS.map(y=>html`<option key=${y} value=${y}>${y}</option>`)}</select>
+      <div class="lbl" style=${{marginTop:12}}>Morning class</div>
+      <select class="in" value=${mc} onChange=${e=>setMc(e.target.value)}>${classes.slice().sort((a,b)=>a.name.localeCompare(b.name)).map(c=>html`<option key=${c.id} value=${c.name}>${c.name}</option>`)}</select>
+      <div class="lbl" style=${{marginTop:12}}>Boarding status</div>
+      <div style=${{display:'flex',gap:8,marginTop:6}}>${['Boarding','Commuter'].map(b=>html`<button key=${b} class="chip ${bs===b?'on':''}" style=${{flex:1}} onClick=${()=>setBs(b)}>${b}</button>`)}</div>
+      ${!isNew&&html`<div style=${{display:'flex',alignItems:'center',justifyContent:'space-between',marginTop:14}}>
+        <div><b>On roll</b><div class="muted" style=${{fontSize:11}}>Turn off if the pupil has left</div></div>
+        <button class="chip ${active?'on':''}" onClick=${()=>setActive(a=>!a)}>${active?'On roll':'Left'}</button></div>`}
+      ${err&&html`<div style=${{color:C.urgent,fontSize:13,marginTop:10}}>${err}</div>`}
+      <div style=${{display:'flex',gap:8,marginTop:18}}>
+        <button class="btn ghost" style=${{flex:1}} onClick=${onClose}>Cancel</button>
+        <button class="btn gold" style=${{flex:1}} disabled=${busy} onClick=${save}>${busy?'Saving…':(isNew?'Add pupil':'Save changes')}</button></div>
+    </div></div>`}
+
 function Dashboard({profile,onSignOut}){
   const [pupils,setPupils]=useState(null);const [classes,setClasses]=useState([]);const [groups,setGroups]=useState([])
   const [anns,setAnns]=useState([]);const [tab,setTab]=useState('overview');const [q,setQ]=useState('');const [toast,setToast]=useState('')
+  const [editPupil,setEditPupil]=useState(null);const canManage=profile.role==='admin'
   const fire=m=>{setToast(m);setTimeout(()=>setToast(''),3200)}
   async function load(){const [p,c,g,a]=await Promise.all([
     sb.from('pupils').select('*').order('last_name'),
@@ -158,9 +201,10 @@ function Dashboard({profile,onSignOut}){
           <div class="serif" style=${{color:C.navy,fontWeight:700}}>${(c.class_enrolments&&c.class_enrolments[0]&&c.class_enrolments[0].count)||0}</div></div>`)}
       </div>`}
       ${tab==='pupils'&&pupils&&html`<div>
+        ${canManage&&html`<button class="btn gold" style=${{marginBottom:12}} onClick=${()=>setEditPupil({})}>+ Add pupil</button>`}
         <input class="in" placeholder="Search pupils…" value=${q} onInput=${e=>setQ(e.target.value)} style=${{marginBottom:12}}/>
         <div class="muted" style=${{fontSize:12,marginBottom:8}}>${filtered.length} of ${total}</div>
-        ${filtered.map(p=>html`<div key=${p.id} class="card" style=${{padding:'10px 14px',marginBottom:6}}>
+        ${filtered.map(p=>html`<div key=${p.id} class="card" style=${{padding:'10px 14px',marginBottom:6,cursor:canManage?'pointer':'default'}} onClick=${()=>canManage&&setEditPupil(p)}>
           <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center'}}><b>${p.first_name} ${p.last_name}</b>
           <span class="tag" style=${{background:p.boarding_status==='Boarding'?C.navy:'#EEF',color:p.boarding_status==='Boarding'?'#fff':C.navy}}>${p.boarding_status||'—'}</span></div>
           <div class="muted" style=${{fontSize:12,marginTop:2}}>${p.academic_year||'—'} · ${p.morning_class||'—'}</div></div>`)}
@@ -169,6 +213,7 @@ function Dashboard({profile,onSignOut}){
       ${tab==='inbox'&&html`<${Inbox}/>`}
       ${tab==='attendance'&&html`<${Attendance} profile=${profile}/>`}
       ${tab==='detentions'&&html`<${Detentions} profile=${profile}/>`}
+      ${editPupil&&html`<${PupilEditor} pupil=${editPupil} classes=${classes} onClose=${()=>setEditPupil(null)} onSaved=${m=>{setEditPupil(null);fire(m);load()}}/>`}
     </div>
     ${toast&&html`<div style=${{position:'fixed',left:'50%',bottom:24,transform:'translateX(-50%)',background:'#0E1D38',color:'#fff',padding:'10px 16px',borderRadius:999,fontSize:14,maxWidth:'90%',textAlign:'center'}}>${toast}</div>`}
   </div>`}
@@ -211,7 +256,7 @@ function Composer({groups,groupSize,onSent}){
 
 function fmtTime(t){try{return new Date(t).toLocaleString([],{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})}catch(_){return ''}}
 
-function Thread({conversationId,isStaff,onBack}){
+function Thread({conversationId,isStaff,onBack,newParentId}){
   const [cid,setCid]=useState(conversationId)
   const [msgs,setMsgs]=useState([]);const [text,setText]=useState('');const [busy,setBusy]=useState(false)
   const [file,setFile]=useState(null);const [urls,setUrls]=useState({})
@@ -235,7 +280,7 @@ function Thread({conversationId,isStaff,onBack}){
       if(upErr){setBusy(false);alert('Upload failed: '+upErr.message);return}
       ap=path;an=file.name;at=file.type}
     setText('');setFile(null)
-    const {data,error}=await sb.functions.invoke('send-message',{body:{...(cid?{conversation_id:cid}:{}),body:b,attachment_path:ap,attachment_name:an,attachment_type:at}})
+    const {data,error}=await sb.functions.invoke('send-message',{body:{...(cid?{conversation_id:cid}:{}),...(!cid&&newParentId?{parent_id:newParentId}:{}),body:b,attachment_path:ap,attachment_name:an,attachment_type:at}})
     setBusy(false)
     if(error){setText(b);return}
     if(!cid&&data&&data.conversation_id){setCid(data.conversation_id);load(data.conversation_id)}else load()}
@@ -262,19 +307,33 @@ function Thread({conversationId,isStaff,onBack}){
 
 function Inbox(){
   const [convs,setConvs]=useState(null);const [names,setNames]=useState({});const [open,setOpen]=useState(null)
+  const [compose,setCompose]=useState(false);const [parents,setParents]=useState(null);const [kids,setKids]=useState({});const [psearch,setPsearch]=useState('');const [picked,setPicked]=useState(null)
   async function load(){const {data}=await sb.from('conversations').select('*').order('last_message_at',{ascending:false});setConvs(data||[])
     const ids=[...new Set((data||[]).map(c=>c.parent_id))]
     if(ids.length){const {data:ps}=await sb.from('profiles').select('id,full_name').in('id',ids);const m={};(ps||[]).forEach(p=>m[p.id]=p.full_name);setNames(m)}}
+  async function loadParents(){const {data:ps}=await sb.from('profiles').select('id,full_name').eq('role','parent').order('full_name');setParents(ps||[])
+    const {data:pp}=await sb.from('parent_pupil').select('parent_id,pupil_id');const pids=[...new Set((pp||[]).map(x=>x.pupil_id))]
+    let nm={};if(pids.length){const {data:pu}=await sb.from('pupils').select('id,first_name,last_name').in('id',pids);(pu||[]).forEach(p=>nm[p.id]=p.first_name+' '+p.last_name)}
+    const m={};(pp||[]).forEach(x=>{(m[x.parent_id]=m[x.parent_id]||[]).push(nm[x.pupil_id])});setKids(m)}
   useEffect(()=>{load()
     const ch=sb.channel('inbox').on('postgres_changes',{event:'*',schema:'parent_hub',table:'conversations'},()=>load()).on('postgres_changes',{event:'INSERT',schema:'parent_hub',table:'messages'},()=>load()).subscribe()
     return ()=>sb.removeChannel(ch)},[])
+  if(picked)return html`<div>
+    <div class="card" style=${{padding:'10px 14px',marginBottom:10,background:C.navy,color:'#fff',border:'none'}}><b>${picked.full_name}</b><div style=${{fontSize:11,color:'#AEBAD0'}}>${(kids[picked.id]||[]).filter(Boolean).join(', ')||'Parent'}</div></div>
+    <${Thread} newParentId=${picked.id} isStaff=${true} onBack=${()=>{setPicked(null);setCompose(false);load()}}/></div>`
   if(open)return html`<${Thread} conversationId=${open.id} isStaff=${true} onBack=${()=>{setOpen(null);load()}}/>`
-  if(convs===null)return html`<div class="muted">Loading…</div>`
-  if(convs.length===0)return html`<div class="card muted" style=${{padding:16}}>No parent messages yet. When a parent messages the school, their conversation appears here.</div>`
-  return html`<div>${convs.map(c=>html`<div key=${c.id} class="card" style=${{padding:'12px 14px',marginBottom:8,cursor:'pointer'}} onClick=${()=>setOpen(c)}>
-    <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center'}}><b>${names[c.parent_id]||'Parent'}</b><span class="muted" style=${{fontSize:11}}>${fmtTime(c.last_message_at)}</span></div>
-    <div class="muted" style=${{fontSize:12}}>${c.subject||'Message'}</div></div>`)}</div>`}
-
+  return html`<div>
+    <button class="btn gold" style=${{marginBottom:12}} onClick=${()=>{setCompose(c=>!c);if(parents===null)loadParents()}}>${compose?'✕ Close':'✏️ New message to a parent'}</button>
+    ${compose&&html`<div class="card" style=${{padding:12,marginBottom:14}}>
+      <input class="in" style=${{marginTop:0}} placeholder="Search parent or child name…" value=${psearch} onInput=${e=>setPsearch(e.target.value)}/>
+      <div style=${{maxHeight:280,overflowY:'auto',marginTop:8}}>
+        ${parents===null?html`<div class="muted" style=${{padding:8}}>Loading parents…</div>`:parents.filter(p=>((p.full_name||'').toLowerCase().includes(psearch.toLowerCase()))||((kids[p.id]||[]).join(' ').toLowerCase().includes(psearch.toLowerCase()))).slice(0,50).map(p=>html`<div key=${p.id} class="card" style=${{padding:'8px 12px',marginBottom:6,cursor:'pointer'}} onClick=${()=>setPicked(p)}>
+          <b>${p.full_name}</b><div class="muted" style=${{fontSize:11}}>${(kids[p.id]||[]).filter(Boolean).join(', ')||'—'}</div></div>`)}
+      </div></div>`}
+    ${convs===null?html`<div class="muted">Loading…</div>`:convs.length===0?html`<div class="card muted" style=${{padding:16}}>No conversations yet. Start one above, or wait for a parent to message.</div>`:convs.map(c=>html`<div key=${c.id} class="card" style=${{padding:'12px 14px',marginBottom:8,cursor:'pointer'}} onClick=${()=>setOpen(c)}>
+      <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center'}}><b>${names[c.parent_id]||'Parent'}</b><span class="muted" style=${{fontSize:11}}>${fmtTime(c.last_message_at)}</span></div>
+      <div class="muted" style=${{fontSize:12}}>${c.subject||'Message'}</div></div>`)}
+  </div>`}
 function ParentApp({profile,onSignOut}){
   const [cid,setCid]=useState(undefined);const [toast,setToast]=useState('')
   const fire=m=>{setToast(m);setTimeout(()=>setToast(''),3200)}

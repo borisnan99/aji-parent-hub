@@ -11,6 +11,28 @@ const cors = {
 const json = (b: unknown, s = 200) =>
   new Response(JSON.stringify(b), { status: s, headers: { ...cors, "content-type": "application/json" } });
 
+// Mirrors the parent_hub.can_see_parent() RLS logic so a staff member can only
+// start a conversation with a parent they are allowed to message.
+async function canSeeParent(svc: any, staffId: string, role: string, parentId: string) {
+  if (role === "admin") return true;
+  const { data: acc } = await svc.from("staff_access").select("*").eq("user_id", staffId).maybeSingle();
+  if (acc && (acc.is_full || acc.msg_all)) return true;
+  const { data: links } = await svc.from("parent_pupil").select("pupil_id").eq("parent_id", parentId);
+  const pids = (links ?? []).map((l: any) => l.pupil_id);
+  if (!pids.length) return false;
+  const { data: kids } = await svc.from("pupils").select("id,boarding_status,academic_year").in("id", pids);
+  if (acc && acc.msg_boarders && (kids ?? []).some((k: any) => k.boarding_status === "Boarding")) return true;
+  const SY = ["Year 7", "Year 8", "Year 9", "Year 10", "Year 11"];
+  if (acc && acc.msg_school && (kids ?? []).some((k: any) => SY.includes(k.academic_year))) return true;
+  const { data: ct } = await svc.from("class_teachers").select("class_id,can_message").eq("user_id", staffId);
+  const mine = (ct ?? []).filter((c: any) => c.can_message).map((c: any) => c.class_id);
+  if (mine.length) {
+    const { data: enr } = await svc.from("class_enrolments").select("pupil_id,class_id").in("pupil_id", pids);
+    if ((enr ?? []).some((e: any) => mine.includes(e.class_id))) return true;
+  }
+  return false;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   try {
@@ -25,7 +47,7 @@ Deno.serve(async (req) => {
     if (!me) return json({ error: "no profile" }, 403);
     const isStaff = ["admin", "staff"].includes(me.role);
 
-    let { conversation_id, body, subject } = await req.json();
+    let { conversation_id, body, subject, parent_id } = await req.json();
     if (!body || !body.trim()) return json({ error: "empty message" }, 400);
 
     // resolve the conversation
@@ -35,8 +57,20 @@ Deno.serve(async (req) => {
       conv = data;
       if (!conv) return json({ error: "conversation not found" }, 404);
       if (!isStaff && conv.parent_id !== user.id) return json({ error: "not your conversation" }, 403);
+    } else if (isStaff) {
+      if (!parent_id) return json({ error: "parent_id required to start a conversation" }, 400);
+      const allowed = await canSeeParent(svc, user.id, me.role, parent_id);
+      if (!allowed) return json({ error: "You are not allowed to message this parent" }, 403);
+      const { data: existing } = await svc.from("conversations")
+        .select("*").eq("parent_id", parent_id).eq("status", "open")
+        .order("last_message_at", { ascending: false }).limit(1);
+      conv = existing?.[0];
+      if (!conv) {
+        const { data: made } = await svc.from("conversations")
+          .insert({ parent_id, subject: subject || "Message from the school" }).select().single();
+        conv = made;
+      }
     } else {
-      if (isStaff) return json({ error: "staff must reply to an existing conversation" }, 400);
       const { data: existing } = await svc.from("conversations")
         .select("*").eq("parent_id", user.id).eq("status", "open")
         .order("last_message_at", { ascending: false }).limit(1);
