@@ -155,6 +155,41 @@ function PupilEditor({pupil,classes,onClose,onSaved}){
         <button class="btn gold" style=${{flex:1}} disabled=${busy} onClick=${save}>${busy?'Saving…':(isNew?'Add pupil':'Save changes')}</button></div>
     </div></div>`}
 
+function Leaderboard({profile}){
+  const [range,setRange]=useState('week');const [rows,setRows]=useState(null);const [meta,setMeta]=useState({})
+  const iso=d=>{const z=new Date(d.getTime()-d.getTimezoneOffset()*60000);return z.toISOString().slice(0,10)}
+  function bounds(r){const now=new Date()
+    if(r==='week'){const day=(now.getDay()+6)%7;const mon=new Date(now);mon.setDate(now.getDate()-day);const fri=new Date(mon);fri.setDate(mon.getDate()+4);return [iso(mon),iso(fri)]}
+    const first=new Date(now.getFullYear(),now.getMonth(),1);const last=new Date(now.getFullYear(),now.getMonth()+1,0);return [iso(first),iso(last)]}
+  async function fetchAll(from,to){let all=[],off=0;while(true){const {data,error}=await sb.from('attendance').select('class_id,status').eq('phase','morning').gte('on_date',from).lte('on_date',to).range(off,off+999);if(error||!data||!data.length)break;all=all.concat(data);if(data.length<1000)break;off+=1000}return all}
+  async function load(){setRows(null)
+    const [from,to]=bounds(range)
+    const [{data:cls},att]=await Promise.all([sb.from('classes').select('id,name').eq('phase','morning'),fetchAll(from,to)])
+    const cmap={};(cls||[]).forEach(c=>cmap[c.id]=c.name)
+    const agg={};(att||[]).forEach(a=>{if(!a.class_id)return;const g=agg[a.class_id]=agg[a.class_id]||{present:0,late:0,absent:0,excused:0,marks:0};g.marks++;if(a.status in g)g[a.status]++})
+    const list=Object.keys(agg).map(cid=>{const g=agg[cid];const pct=g.marks?Math.round((g.present+g.late)/g.marks*100):0;return {cid,name:cmap[cid]||'Class',pct,...g}}).filter(x=>x.marks>0).sort((a,b)=>b.pct-a.pct||a.late-b.late||a.name.localeCompare(b.name))
+    const mostLate=list.slice().sort((a,b)=>b.late-a.late)[0]
+    setRows(list);setMeta({from,to,best:list[0],mostLate:(mostLate&&mostLate.late>0)?mostLate:null})}
+  useEffect(()=>{load()},[range])
+  const fmt=s=>{const d=new Date(s+'T00:00:00');return d.toLocaleDateString('en-GB',{day:'numeric',month:'short'})}
+  const medal=i=>i===0?'🥇':i===1?'🥈':i===2?'🥉':(i+1)+'.'
+  return html`<div>
+    <div style=${{display:'flex',gap:8,marginBottom:12}}>${[['week','This week (Mon–Fri)'],['month','This month']].map(([k,l])=>html`<button key=${k} class="chip ${range===k?'on':''}" style=${{flex:1}} onClick=${()=>setRange(k)}>${l}</button>`)}</div>
+    ${rows===null?html`<div class="muted">Crunching the numbers…</div>`:rows.length===0?html`<div class="card muted" style=${{padding:16}}>No morning registers taken ${range==='week'?'this week':'this month'} yet.</div>`:html`<div>
+      <div class="muted" style=${{fontSize:12,marginBottom:10}}>Morning register · ${fmt(meta.from)} – ${fmt(meta.to)}</div>
+      ${meta.best&&html`<div class="card" style=${{padding:'12px 14px',marginBottom:8,background:C.navy,border:'none',color:'#fff'}}>
+        <div style=${{fontSize:11,color:C.goldSoft,fontWeight:700,letterSpacing:.5}}>🏆 BEST ATTENDANCE</div>
+        <div style=${{display:'flex',justifyContent:'space-between',alignItems:'baseline',marginTop:2}}><b class="serif" style=${{fontSize:18}}>${meta.best.name}</b><b style=${{fontSize:22,color:C.gold}}>${meta.best.pct}%</b></div></div>`}
+      ${meta.mostLate&&html`<div class="card" style=${{padding:'10px 14px',marginBottom:12,borderColor:C.urgentSoft,background:C.urgentSoft}}>
+        <b style=${{color:C.urgent}}>⏰ Most lates:</b> ${meta.mostLate.name} — ${meta.mostLate.late} late mark${meta.mostLate.late===1?'':'s'}</div>`}
+      <div class="lbl" style=${{margin:'4px 0 6px'}}>Full table</div>
+      ${rows.map((r,i)=>html`<div key=${r.cid} class="card" style=${{padding:'10px 12px',marginBottom:6}}>
+        <div style=${{display:'flex',alignItems:'center',gap:8}}><span style=${{width:26,textAlign:'center',fontWeight:700,color:C.muted}}>${medal(i)}</span><b style=${{flex:1}}>${r.name}</b><b style=${{color:C.navy}}>${r.pct}%</b></div>
+        <div style=${{height:8,background:C.line,borderRadius:99,marginTop:8,overflow:'hidden'}}><div style=${{height:'100%',width:r.pct+'%',background:`linear-gradient(90deg,${C.gold},${C.goldSoft})`,borderRadius:99}}></div></div>
+        <div class="muted" style=${{fontSize:11,marginTop:6}}>${r.present} present · ${r.late} late · ${r.absent} absent${r.excused?' · '+r.excused+' excused':''} — ${r.marks} marks</div></div>`)}
+    </div>`}
+  </div>`}
+
 function Dashboard({profile,onSignOut}){
   const [pupils,setPupils]=useState(null);const [classes,setClasses]=useState([]);const [groups,setGroups]=useState([])
   const [anns,setAnns]=useState([]);const [tab,setTab]=useState('overview');const [q,setQ]=useState('');const [toast,setToast]=useState('')
@@ -181,8 +216,8 @@ function Dashboard({profile,onSignOut}){
         <div style=${{color:'#AEBAD0',fontSize:10}}>Al Jamiatul Islamiyah</div></div></div>
       <button onClick=${onSignOut} style=${{background:'transparent',border:'1px solid rgba(255,255,255,.3)',color:'#fff',borderRadius:10,padding:'6px 10px',fontSize:12,cursor:'pointer'}}>Sign out</button></div>
     <div style=${{height:3,background:`linear-gradient(90deg,${C.gold},${C.goldSoft})`}}></div>
-    <div style=${{padding:'8px 16px 0',display:'flex',gap:8,flexWrap:'wrap'}}>${['overview','pupils','attendance','detentions','announce','inbox'].map(t=>html`
-      <button key=${t} onClick=${()=>setTab(t)} class="chip ${tab===t?'on':''}">${t==='overview'?'Overview':t==='pupils'?'Pupils':t==='attendance'?'Attendance':t==='detentions'?'Detentions':t==='announce'?'Announce':'Inbox'}</button>`)}</div>
+    <div style=${{padding:'8px 16px 0',display:'flex',gap:8,flexWrap:'wrap'}}>${['overview','pupils','attendance','league','detentions','announce','inbox'].map(t=>html`
+      <button key=${t} onClick=${()=>setTab(t)} class="chip ${tab===t?'on':''}">${t==='overview'?'Overview':t==='pupils'?'Pupils':t==='attendance'?'Attendance':t==='league'?'League':t==='detentions'?'Detentions':t==='announce'?'Announce':'Inbox'}</button>`)}</div>
     <div style=${{padding:16}}>
       ${pupils===null&&html`<div class="muted">Loading live data…</div>`}
       ${tab==='overview'&&pupils&&html`<div>
@@ -212,6 +247,7 @@ function Dashboard({profile,onSignOut}){
       ${tab==='announce'&&html`<${Composer} groups=${groups} groupSize=${groupSize} onSent=${m=>{fire(m);load()}}/>`}
       ${tab==='inbox'&&html`<${Inbox}/>`}
       ${tab==='attendance'&&html`<${Attendance} profile=${profile}/>`}
+      ${tab==='league'&&html`<${Leaderboard} profile=${profile}/>`}
       ${tab==='detentions'&&html`<${Detentions} profile=${profile}/>`}
       ${editPupil&&html`<${PupilEditor} pupil=${editPupil} classes=${classes} onClose=${()=>setEditPupil(null)} onSaved=${m=>{setEditPupil(null);fire(m);load()}}/>`}
     </div>
