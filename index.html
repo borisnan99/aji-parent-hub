@@ -408,6 +408,9 @@ function Attendance({profile}){
       if(lateIds.length){const {data,error:e2}=await sb.functions.invoke('notify-late',{body:{pupil_ids:lateIds,phase:session,minutes:minsLate(),on_date:date}})
         if(!e2&&data&&data.notified)note=' · '+data.notified+' parent alert'+(data.notified===1?'':'s')+' sent'}
     }
+    if(!error&&date===today){const firstTime=current.ids.filter(id=>rec[id]).length===0
+      if(firstTime){const cAbsent=current.ids.filter(id=>statusOf(id)==='absent').length,cLate=current.ids.filter(id=>statusOf(id)==='late').length,cTotal=current.ids.length
+        sb.functions.invoke('notify-register',{body:{phase:session,scope_name:current.name,present:cTotal-cAbsent-cLate,late:cLate,absent:cAbsent,total:cTotal}}).catch(()=>{})}}
     setBusy(false);fire(error?('Error: '+error.message):('Register saved'+note));if(!error)loadRecords()}
   async function setCode(id,code){
     await sb.from('attendance').upsert({pupil_id:id,on_date:date,phase:session,status:'absent',absence_code:code||null,logged_by:profile.id},{onConflict:'pupil_id,on_date,phase'})
