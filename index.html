@@ -201,6 +201,29 @@ function Leaderboard({profile}){
     </div>`}
   </div>`}
 
+function Engagement(){
+  const [d,setD]=useState(null);const [err,setErr]=useState('');const [q,setQ]=useState('')
+  useEffect(()=>{(async()=>{const {data,error}=await sb.functions.invoke('engagement-stats');if(error){setErr(error.message||'error');return}if(data&&data.error){setErr(data.error);return}setD(data)})()},[])
+  const pct=n=>d&&d.total?Math.round(n/d.total*100):0
+  const metric=(label,n,color)=>html`<div class="card" style=${{padding:'12px 14px',marginBottom:8}}>
+    <div style=${{display:'flex',justifyContent:'space-between',alignItems:'baseline'}}><b>${label}</b><b style=${{fontSize:20,color}}>${pct(n)}%</b></div>
+    <div class="muted" style=${{fontSize:11,marginTop:2}}>${n} of ${d.total} families</div>
+    <div style=${{height:7,background:C.line,borderRadius:99,marginTop:6,overflow:'hidden'}}><div style=${{height:'100%',width:pct(n)+'%',background:color}}></div></div></div>`
+  if(err)return html`<div class="card muted" style=${{padding:16}}>Couldn't load engagement: ${err}</div>`
+  if(!d)return html`<div class="muted">Loading engagement…</div>`
+  const list=(d.parents||[]).filter(p=>(p.name||'').toLowerCase().includes(q.toLowerCase()))
+  return html`<div>
+    ${metric('🔔 Notifications on',d.push,C.green)}
+    ${metric('💬 Active in messages',d.active,C.navy)}
+    ${metric('✅ Connected (any activity)',d.connected,C.gold)}
+    <div class="muted" style=${{fontSize:10,margin:'2px 0 10px',lineHeight:1.3}}>🔔 has notifications on · 💬 has read or replied to a message · ⚪ no sign-in activity yet</div>
+    <div class="lbl" style=${{marginBottom:6}}>Families — chase the ⚪ ones</div>
+    <input class="in" placeholder="Search families…" value=${q} onInput=${e=>setQ(e.target.value)} style=${{marginBottom:8}}/>
+    ${list.map(p=>html`<div key=${p.id} class="card" style=${{padding:'8px 12px',marginBottom:6,display:'flex',justifyContent:'space-between',alignItems:'center',gap:8}}>
+      <b style=${{fontSize:13,minWidth:0,wordBreak:'break-word'}}>${p.name}</b>
+      <span style=${{fontSize:15,flexShrink:0}}>${p.push?'🔔':''}${p.active?' 💬':''}${(!p.push&&!p.active)?'⚪':''}</span></div>`)}
+  </div>`}
+
 function Dashboard({profile,onSignOut}){
   const [pupils,setPupils]=useState(null);const [classes,setClasses]=useState([]);const [groups,setGroups]=useState([])
   const [anns,setAnns]=useState([]);const [tab,setTab]=useState('overview');const [q,setQ]=useState('');const [toast,setToast]=useState('')
@@ -227,8 +250,8 @@ function Dashboard({profile,onSignOut}){
         <div style=${{color:'#AEBAD0',fontSize:10}}>Al Jamiatul Islamiyah</div></div></div>
       <button onClick=${onSignOut} style=${{background:'transparent',border:'1px solid rgba(255,255,255,.3)',color:'#fff',borderRadius:10,padding:'6px 10px',fontSize:12,cursor:'pointer'}}>Sign out</button></div>
     <div style=${{height:3,background:`linear-gradient(90deg,${C.gold},${C.goldSoft})`}}></div>
-    <div style=${{padding:'8px 16px 0',display:'flex',gap:8,flexWrap:'wrap'}}>${['overview','pupils','attendance','league','detentions','announce','inbox'].map(t=>html`
-      <button key=${t} onClick=${()=>setTab(t)} class="chip ${tab===t?'on':''}">${t==='overview'?'Overview':t==='pupils'?'Pupils':t==='attendance'?'Attendance':t==='league'?'League':t==='detentions'?'Detentions':t==='announce'?'Announce':'Inbox'}</button>`)}</div>
+    <div style=${{padding:'8px 16px 0',display:'flex',gap:8,flexWrap:'wrap'}}>${['overview','pupils','attendance','league',...(canManage?['engagement']:[]),'detentions','announce','inbox'].map(t=>html`
+      <button key=${t} onClick=${()=>setTab(t)} class="chip ${tab===t?'on':''}">${t==='overview'?'Overview':t==='pupils'?'Pupils':t==='attendance'?'Attendance':t==='league'?'League':t==='engagement'?'Engagement':t==='detentions'?'Detentions':t==='announce'?'Announce':'Inbox'}</button>`)}</div>
     <div style=${{padding:16}}>
       ${pupils===null&&html`<div class="muted">Loading live data…</div>`}
       ${tab==='overview'&&pupils&&html`<div>
@@ -259,6 +282,7 @@ function Dashboard({profile,onSignOut}){
       ${tab==='inbox'&&html`<${Inbox}/>`}
       ${tab==='attendance'&&html`<${Attendance} profile=${profile}/>`}
       ${tab==='league'&&html`<${Leaderboard} profile=${profile}/>`}
+      ${tab==='engagement'&&canManage&&html`<${Engagement}/>`}
       ${tab==='detentions'&&html`<${Detentions} profile=${profile}/>`}
       ${editPupil&&html`<${PupilEditor} pupil=${editPupil} classes=${classes} onClose=${()=>setEditPupil(null)} onSaved=${m=>{setEditPupil(null);fire(m);load()}}/>`}
     </div>
