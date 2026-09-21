@@ -511,11 +511,11 @@ function Attendance({profile}){
       <div class="muted" style=${{fontSize:12,marginBottom:8}}>${session==='morning'?'Pick a class to take its register:':session==='afternoon'?'Pick a year group:':'Register:'}</div>
       ${regs.map(r=>{const ab=r.ids.filter(id=>statusOf(id)==='absent').length
         return html`<div key=${r.key} class="card" style=${{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'12px 14px',marginBottom:8,cursor:'pointer'}} onClick=${()=>{setReg(r.key);setView('mark')}}>
-          <div><b>${r.name}</b><div class="muted" style=${{fontSize:11}}>${r.ids.length} pupils${ab?' - '+ab+' absent':''}</div></div><span class="muted">&#8250;</span></div>`})}
+          <div><b>${r.name}</b><div class="muted" style=${{fontSize:11}}>${r.ids.length} pupils${ab?' - '+ab+' absent':''}</div></div><span class="muted">›</span></div>`})}
     </div>`}
     ${pupils&&current&&html`<div style=${{marginTop:12}}>
       <div style=${{display:'flex',gap:8,alignItems:'center',marginBottom:10}}>
-        <button class="chip" onClick=${()=>setReg(null)}>&#8592; Registers</button><b style=${{marginLeft:4}}>${current.name}</b>
+        <button class="chip" onClick=${()=>setReg(null)}>← Registers</button><b style=${{marginLeft:4}}>${current.name}</b>
         <button class="chip" style=${{marginLeft:'auto'}} onClick=${exportCsv}>CSV</button>
       </div>
       <div style=${{display:'flex',gap:8,marginBottom:10}}>${['mark','absentees'].map(v=>html`<button key=${v} class="chip ${view===v?'on':''}" onClick=${()=>setView(v)}>${v==='mark'?'Mark':'Absentees & codes'}</button>`)}</div>
