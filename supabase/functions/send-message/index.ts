@@ -47,8 +47,8 @@ Deno.serve(async (req) => {
     if (!me) return json({ error: "no profile" }, 403);
     const isStaff = ["admin", "staff"].includes(me.role);
 
-    let { conversation_id, body, subject, parent_id } = await req.json();
-    if (!body || !body.trim()) return json({ error: "empty message" }, 400);
+    let { conversation_id, body, subject, parent_id, attachment_path, attachment_name, attachment_type } = await req.json();
+    if ((!body || !body.trim()) && !attachment_path) return json({ error: "empty message" }, 400);
 
     // resolve the conversation
     let conv;
@@ -84,7 +84,10 @@ Deno.serve(async (req) => {
 
     await svc.from("messages").insert({
       conversation_id: conv.id, sender_id: user.id,
-      sender_role: isStaff ? "staff" : "parent", body: body.trim(),
+      sender_role: isStaff ? "staff" : "parent", body: (body || "").trim(),
+      attachment_path: attachment_path ?? null,
+      attachment_name: attachment_name ?? null,
+      attachment_type: attachment_type ?? null,
       read_by_staff: isStaff, read_by_parent: !isStaff,
     });
     await svc.from("conversations").update({ last_message_at: new Date().toISOString(), status: "open" }).eq("id", conv.id);
@@ -101,7 +104,7 @@ Deno.serve(async (req) => {
       const { data: staff } = await svc.from("profiles").select("id").in("role", ["admin", "staff"]);
       targetIds = (staff ?? []).map((s: any) => s.id);
     }
-    const preview = body.trim().slice(0, 120);
+    const preview = (body || "").trim() ? body.trim().slice(0, 120) : (attachment_name ? "\ud83d\udcce " + attachment_name : "New message");
     const payload = JSON.stringify({
       title: isStaff ? "Message from the school" : `New message from ${me.full_name}`,
       body: preview, url: "/", kind: "message",
