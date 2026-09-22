@@ -238,11 +238,11 @@ function Dashboard({profile,onSignOut}){
     setPupils(p.data||[]);setClasses(c.data||[]);setGroups(g.data||[]);setAnns(a.data||[])}
   useEffect(()=>{load()},[])
   const total=pupils?pupils.filter(p=>p.is_active!==false).length:0
-  const boarders=pupils?pupils.filter(p=>p.boarding_status==='Boarding').length:0
+  const boarders=pupils?pupils.filter(p=>p.boarding_status==='Boarding'&&p.is_active!==false).length:0
   const groupSize=g=>{if(!pupils)return 0;if(g.kind==='all')return total
-    if(g.kind==='academic_year')return pupils.filter(p=>p.academic_year===g.criteria.academic_year).length
-    if(g.kind==='morning_class')return pupils.filter(p=>p.morning_class===g.criteria.morning_class).length
-    if(g.kind==='boarding')return pupils.filter(p=>p.boarding_status===g.criteria.boarding_status).length;return 0}
+    if(g.kind==='academic_year')return pupils.filter(p=>p.academic_year===g.criteria.academic_year&&p.is_active!==false).length
+    if(g.kind==='morning_class')return pupils.filter(p=>p.morning_class===g.criteria.morning_class&&p.is_active!==false).length
+    if(g.kind==='boarding')return pupils.filter(p=>p.boarding_status===g.criteria.boarding_status&&p.is_active!==false).length;return 0}
   const filtered=pupils?pupils.filter(p=>(p.first_name+' '+p.last_name).toLowerCase().includes(q.toLowerCase())):[]
   return html`<div class="wrap" style=${{paddingBottom:40}}>
     <div style=${{background:C.navy,padding:'14px 18px',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
