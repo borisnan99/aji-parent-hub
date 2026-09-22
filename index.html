@@ -128,11 +128,12 @@ function PupilEditor({pupil,classes,onClose,onSaved}){
     let pid=pupil.id
     if(isNew){const {data,error}=await sb.from('pupils').insert(payload).select('id').single();if(error){setBusy(false);setErr(error.message);return}pid=data.id}
     else{const {error}=await sb.from('pupils').update(payload).eq('id',pid);if(error){setBusy(false);setErr(error.message);return}}
-    const cls=classes.find(c=>c.name===mc)
+    if(!active){await sb.from('class_enrolments').delete().eq('pupil_id',pid)}
+    else{const cls=classes.find(c=>c.name===mc)
     if(cls){const {data:ex}=await sb.from('class_enrolments').select('class_id').eq('pupil_id',pid)
       if(ex&&ex.length){if(ex[0].class_id!==cls.id)await sb.from('class_enrolments').update({class_id:cls.id}).eq('pupil_id',pid)}
-      else await sb.from('class_enrolments').insert({class_id:cls.id,pupil_id:pid})}
-    setBusy(false);onSaved(isNew?'Pupil added':'Pupil updated')}
+      else await sb.from('class_enrolments').insert({class_id:cls.id,pupil_id:pid})}}
+    setBusy(false);onSaved(isNew?'Pupil added':(active?'Pupil updated':'Taken off roll & removed from class'))}
   return html`<div style=${{position:'fixed',inset:0,background:'rgba(10,18,35,.55)',display:'flex',alignItems:'flex-end',justifyContent:'center',zIndex:50}} onClick=${onClose}>
     <div class="card" style=${{background:'#fff',width:'100%',maxWidth:560,borderRadius:'18px 18px 0 0',padding:18,maxHeight:'88vh',overflowY:'auto'}} onClick=${e=>e.stopPropagation()}>
       <h2 class="serif" style=${{color:C.navy,margin:'2px 0 12px'}}>${isNew?'Add pupil':'Edit pupil'}</h2>
@@ -236,7 +237,7 @@ function Dashboard({profile,onSignOut}){
     sb.from('announcements').select('*').order('created_at',{ascending:false}).limit(10)])
     setPupils(p.data||[]);setClasses(c.data||[]);setGroups(g.data||[]);setAnns(a.data||[])}
   useEffect(()=>{load()},[])
-  const total=pupils?pupils.length:0
+  const total=pupils?pupils.filter(p=>p.is_active!==false).length:0
   const boarders=pupils?pupils.filter(p=>p.boarding_status==='Boarding').length:0
   const groupSize=g=>{if(!pupils)return 0;if(g.kind==='all')return total
     if(g.kind==='academic_year')return pupils.filter(p=>p.academic_year===g.criteria.academic_year).length
@@ -274,8 +275,8 @@ function Dashboard({profile,onSignOut}){
         <input class="in" placeholder="Search pupils…" value=${q} onInput=${e=>setQ(e.target.value)} style=${{marginBottom:12}}/>
         <div class="muted" style=${{fontSize:12,marginBottom:8}}>${filtered.length} of ${total}</div>
         ${filtered.map(p=>html`<div key=${p.id} class="card" style=${{padding:'10px 14px',marginBottom:6,cursor:canManage?'pointer':'default'}} onClick=${()=>canManage&&setEditPupil(p)}>
-          <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center'}}><b>${p.first_name} ${p.last_name}</b>
-          <span class="tag" style=${{background:p.boarding_status==='Boarding'?C.navy:'#EEF',color:p.boarding_status==='Boarding'?'#fff':C.navy}}>${p.boarding_status||'—'}</span></div>
+          <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',gap:6}}><b style=${{flex:1,minWidth:0}}>${p.first_name} ${p.last_name}</b>
+          ${p.is_active===false?html`<span class="tag" style=${{background:C.urgentSoft,color:C.urgent}}>Off roll</span>`:''}<span class="tag" style=${{background:p.boarding_status==='Boarding'?C.navy:'#EEF',color:p.boarding_status==='Boarding'?'#fff':C.navy}}>${p.boarding_status||'—'}</span></div>
           <div class="muted" style=${{fontSize:12,marginTop:2}}>${p.academic_year||'—'} · ${p.morning_class||'—'}</div></div>`)}
       </div>`}
       ${tab==='announce'&&html`<${Composer} groups=${groups} groupSize=${groupSize} onSent=${m=>{fire(m);load()}}/>`}
@@ -359,6 +360,7 @@ function Thread({conversationId,isStaff,onBack,newParentId}){
     const url=urls[m.attachment_path];const isImg=(m.attachment_type||'').startsWith('image/')
     if(isImg)return html`<div style=${{marginTop:6}}>${url?html`<a href=${url} target="_blank"><img src=${url} style=${{maxWidth:'100%',borderRadius:8}}/></a>`:html`<span style=${{fontSize:12,opacity:.7}}>loading image…</span>`}</div>`
     return html`<a href=${url||'#'} target="_blank" style=${{display:'inline-flex',gap:6,alignItems:'center',marginTop:6,fontSize:13,textDecoration:'underline',color:'inherit'}}>📎 ${m.attachment_name||'file'}</a>`}
+  async function del(id){if(!confirm('Delete this message? This cannot be undone.'))return;const {error}=await sb.from('messages').delete().eq('id',id);if(error){alert('Could not delete: '+error.message);return}load()}
   return html`<div style=${{display:'flex',flexDirection:'column',height:'68vh'}}>
     ${onBack&&html`<button class="chip" style=${{alignSelf:'flex-start',marginBottom:8}} onClick=${onBack}>← Back to inbox</button>`}
     <div ref=${box} style=${{flex:1,overflowY:'auto',display:'flex',flexDirection:'column',gap:8,padding:'4px 2px'}}>
@@ -366,7 +368,7 @@ function Thread({conversationId,isStaff,onBack,newParentId}){
       ${msgs.map(m=>{const mine=((m.sender_role==='staff')===isStaff)
         return html`<div key=${m.id} style=${{alignSelf:mine?'flex-end':'flex-start',maxWidth:'82%'}}>
           <div style=${{background:mine?C.navy:'#fff',color:mine?'#fff':C.ink,border:mine?'none':'1px solid '+C.line,borderRadius:14,padding:'8px 12px',fontSize:14,whiteSpace:'pre-wrap'}}>${m.body}${att(m)}</div>
-          <div class="muted" style=${{fontSize:10,marginTop:2,textAlign:mine?'right':'left'}}>${m.sender_role==='staff'?'School':'Parent'} · ${fmtTime(m.created_at)}</div></div>`})}
+          <div class="muted" style=${{fontSize:10,marginTop:2,textAlign:mine?'right':'left'}}>${m.sender_role==='staff'?'School':'Parent'} · ${fmtTime(m.created_at)}${isStaff&&m.sender_role==='staff'?html` · <span style=${{cursor:'pointer',textDecoration:'underline',color:C.urgent}} onClick=${()=>del(m.id)}>Delete</span>`:''}</div></div>`})}
     </div>
     ${file&&html`<div class="chip" style=${{alignSelf:'flex-start',margin:'6px 0'}}>📎 ${file.name} <span style=${{cursor:'pointer',fontWeight:700}} onClick=${()=>setFile(null)}> ✕</span></div>`}
     <div style=${{display:'flex',gap:8,marginTop:8,alignItems:'center'}}>

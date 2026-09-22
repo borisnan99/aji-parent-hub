@@ -82,9 +82,11 @@ Deno.serve(async (req) => {
       }
     }
 
+    const base = (body || "").trim();
+    const finalBody = (isStaff && base) ? base + "\n\n— " + (me.full_name || "the school") : base;
     await svc.from("messages").insert({
       conversation_id: conv.id, sender_id: user.id,
-      sender_role: isStaff ? "staff" : "parent", body: (body || "").trim(),
+      sender_role: isStaff ? "staff" : "parent", body: finalBody,
       attachment_path: attachment_path ?? null,
       attachment_name: attachment_name ?? null,
       attachment_type: attachment_type ?? null,
