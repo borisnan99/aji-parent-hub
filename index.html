@@ -120,6 +120,13 @@ function PupilEditor({pupil,classes,onClose,onSaved}){
   const [mc,setMc]=useState(pupil.morning_class||(classes[0]&&classes[0].name)||'')
   const [bs,setBs]=useState(pupil.boarding_status||'Boarding');const [active,setActive]=useState(pupil.is_active!==false)
   const [busy,setBusy]=useState(false);const [err,setErr]=useState('')
+  const [guardians,setGuardians]=useState(null);const [pEmail,setPEmail]=useState('');const [pName,setPName]=useState('');const [pBusy,setPBusy]=useState(false);const [pMsg,setPMsg]=useState('')
+  async function loadGuardians(){if(isNew||!pupil.id)return;const {data}=await sb.from('parent_pupil').select('is_primary,profiles(id,full_name,email)').eq('pupil_id',pupil.id);setGuardians((data||[]).map(r=>({...(r.profiles||{}),is_primary:r.is_primary})).filter(g=>g.id).sort((a,b)=>(b.is_primary?1:0)-(a.is_primary?1:0)))}
+  useEffect(()=>{loadGuardians()},[])
+  async function addParent(){const em=pEmail.trim();if(!em||!em.includes('@')){setPMsg('Enter a valid email');return}setPBusy(true);setPMsg('')
+    const {data,error}=await sb.functions.invoke('add-parent',{body:{pupil_id:pupil.id,email:em,name:pName.trim()||null}});setPBusy(false)
+    if(error||(data&&data.error)){setPMsg((data&&data.error)||(error&&error.message)||'Error');return}
+    setPMsg(data.created?'Added — invite emailed ✓':'Linked to this child ✓');setPEmail('');setPName('');loadGuardians()}
   const YEARS=['Year 7','Year 8','Year 9','Year 10','Year 11','Post-16','Over-18']
   async function save(){
     if(!fn.trim()||!ln.trim()){setErr('First and last name are required');return}
@@ -150,6 +157,17 @@ function PupilEditor({pupil,classes,onClose,onSaved}){
       ${!isNew&&html`<div style=${{display:'flex',alignItems:'center',justifyContent:'space-between',marginTop:14}}>
         <div><b>On roll</b><div class="muted" style=${{fontSize:11}}>Turn off if the pupil has left</div></div>
         <button class="chip ${active?'on':''}" onClick=${()=>setActive(a=>!a)}>${active?'On roll':'Left'}</button></div>`}
+      ${!isNew&&html`<div style=${{marginTop:16,borderTop:'1px solid '+C.line,paddingTop:14}}>
+        <div class="lbl" style=${{marginBottom:6}}>Parents / Guardians</div>
+        ${guardians===null?html`<div class="muted" style=${{fontSize:12}}>Loading…</div>`:guardians.length===0?html`<div class="muted" style=${{fontSize:12}}>No parents linked yet.</div>`:guardians.map(g=>html`<div key=${g.id} class="card" style=${{padding:'8px 10px',marginBottom:6,display:'flex',justifyContent:'space-between',alignItems:'center',gap:8}}>
+          <div style=${{minWidth:0}}><b style=${{fontSize:13}}>${g.full_name||'Parent'}</b><div class="muted" style=${{fontSize:11,wordBreak:'break-all'}}>${g.email}</div></div>
+          ${g.is_primary?html`<span class="tag" style=${{background:C.goldSoft,color:C.navy,flexShrink:0}}>Preferred</span>`:''}</div>`)}
+        <div class="lbl" style=${{marginTop:10}}>Add another parent (e.g. the mother)</div>
+        <input class="in" type="email" placeholder="Parent's email" value=${pEmail} onInput=${e=>setPEmail(e.target.value)}/>
+        <input class="in" placeholder="Parent's name (optional)" value=${pName} onInput=${e=>setPName(e.target.value)} style=${{marginTop:6}}/>
+        <button class="btn" style=${{marginTop:8,width:'100%'}} disabled=${pBusy} onClick=${addParent}>${pBusy?'Adding…':'Add & send invite'}</button>
+        ${pMsg&&html`<div style=${{fontSize:12,marginTop:6,color:pMsg.indexOf('✓')>=0?C.green:C.urgent}}>${pMsg}</div>`}
+      </div>`}
       ${err&&html`<div style=${{color:C.urgent,fontSize:13,marginTop:10}}>${err}</div>`}
       <div style=${{display:'flex',gap:8,marginTop:18}}>
         <button class="btn ghost" style=${{flex:1}} onClick=${onClose}>Cancel</button>
