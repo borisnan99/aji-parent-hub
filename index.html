@@ -90,7 +90,7 @@ function Login(){
 
 function NotifyCard({userId,fire}){
   const [state,setState]=useState(typeof Notification!=='undefined'?Notification.permission:'unsupported')
-  const [canInstall,setCanInstall]=useState(!!deferredPrompt)
+  const [canInstall,setCanInstall]=useState(!!deferredPrompt);const [showHow,setShowHow]=useState(false)
   useEffect(()=>{const h=()=>setCanInstall(true);window.addEventListener('caninstall',h);return()=>window.removeEventListener('caninstall',h)},[])
   const isIOS=/iphone|ipad|ipod/i.test(navigator.userAgent)
   const standalone=window.matchMedia('(display-mode: standalone)').matches||window.navigator.standalone
@@ -105,8 +105,14 @@ function NotifyCard({userId,fire}){
         ${state==='granted'&&html`<button class="btn ghost" style=${{width:'auto',padding:'8px 12px',fontSize:13}} onClick=${test}>Send test</button>`}
       </div>
     </div>
-    ${canInstall&&!standalone&&html`<button class="btn gold" style=${{marginTop:10}} onClick=${install}>Install app on this device</button>`}
-    ${isIOS&&!standalone&&html`<div class="muted" style=${{fontSize:11,marginTop:10}}>On iPhone: tap Share → “Add to Home Screen”, then open it from there to turn on notifications.</div>`}
+    ${!standalone&&html`<div style=${{marginTop:10}}>
+      ${canInstall?html`<button class="btn gold" style=${{width:'100%'}} onClick=${install}>📲 Install app on this device</button>`:html`<button class="btn gold" style=${{width:'100%'}} onClick=${()=>setShowHow(h=>!h)}>📲 Add to home screen${showHow?' ▲':' ▼'}</button>`}
+      ${(showHow||isIOS)&&!canInstall&&html`<div class="muted" style=${{fontSize:12,marginTop:8,lineHeight:1.55}}>
+        <b style=${{color:C.navy}}>iPhone (Safari):</b> tap <b>Share</b> ⬆️ at the bottom, then <b>Add to Home Screen</b>.<br/>
+        <b style=${{color:C.navy}}>Android (Chrome):</b> tap the <b>⋮ menu</b> (top-right), then <b>Install app</b> / <b>Add to Home screen</b>.<br/>
+        <span style=${{color:C.urgent,fontWeight:600}}>Opened this from WhatsApp or email?</span> First open <b>aji-parent-hub.vercel.app</b> in Safari (iPhone) or Chrome (Android), then follow the steps above.
+      </div>`}
+    </div>`}
   </div>`}
 
 function Stat({n,label,sub}){return html`<div class="card" style=${{padding:16,flex:1,minWidth:120}}>
