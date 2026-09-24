@@ -528,7 +528,7 @@ function Attendance({profile}){
       ${SESS.filter(([k])=>canSess(k)).map(([k,lbl])=>html`<button key=${k} class="chip ${session===k?'on':''}" onClick=${()=>setSession(k)}>${lbl}</button>`)}
     </div>
     <div class="card" style=${{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'12px 16px',marginTop:12,background:C.navy,color:'#fff',border:'none'}}>
-      <div><div style=${{fontSize:11,color:'#AEBAD0'}}>Present - ${session}${session==='evening'||session==='night'?' (boarders)':''}</div><div class="serif" style=${{fontSize:24,fontWeight:700}}>${sPresent} / ${sTotal}</div></div>
+      <div><div style=${{fontSize:11,color:'#AEBAD0'}}>In - ${session}${session==='evening'||session==='night'?' (boarders)':''}</div><div class="serif" style=${{fontSize:24,fontWeight:700}}>${sTotal-sAbsent} / ${sTotal}</div></div>
       <div style=${{textAlign:'center'}}><div style=${{fontSize:11,color:'#AEBAD0'}}>Late</div><div class="serif" style=${{fontSize:24,fontWeight:700,color:'#E9C46A'}}>${sLate}</div></div>
       <div style=${{textAlign:'right'}}><div style=${{fontSize:11,color:'#AEBAD0'}}>Absent</div><div class="serif" style=${{fontSize:24,fontWeight:700,color:C.goldSoft}}>${sAbsent}</div></div>
     </div>
