@@ -185,7 +185,8 @@ function Leaderboard({profile}){
   const iso=d=>{const z=new Date(d.getTime()-d.getTimezoneOffset()*60000);return z.toISOString().slice(0,10)}
   function bounds(r){const now=new Date()
     if(r==='week'){const day=(now.getDay()+6)%7;const mon=new Date(now);mon.setDate(now.getDate()-day);const fri=new Date(mon);fri.setDate(mon.getDate()+4);return [iso(mon),iso(fri)]}
-    const first=new Date(now.getFullYear(),now.getMonth(),1);const last=new Date(now.getFullYear(),now.getMonth()+1,0);return [iso(first),iso(last)]}
+    const [yy,mm]=r.split('-').map(Number);const first=new Date(yy,mm-1,1);const last=new Date(yy,mm,0);return [iso(first),iso(last)]}
+  function monthOpts(){const now=new Date();const o=[];let y=2026,m=8;while(y<now.getFullYear()||(y===now.getFullYear()&&m<=now.getMonth())){o.push([y+'-'+String(m+1).padStart(2,'0'),new Date(y,m,1).toLocaleDateString('en-GB',{month:'short'})]);m++;if(m>11){m=0;y++}}return o}
   async function fetchAll(from,to){let all=[],off=0;while(true){const {data,error}=await sb.from('attendance').select('class_id,pupil_id,status,on_date,phase').in('phase',['morning','afternoon']).gte('on_date',from).lte('on_date',to).range(off,off+999);if(error||!data||!data.length)break;all=all.concat(data);if(data.length<1000)break;off+=1000}return all}
   async function load(){setData(null)
     const [from,to]=bounds(range)
@@ -211,9 +212,9 @@ function Leaderboard({profile}){
   const row=(r,i,detail)=>html`<div key=${r.name} class="card" style=${{padding:'8px 9px',marginBottom:6}}>
     <div style=${{display:'flex',alignItems:'center',gap:5}}><span style=${{fontSize:12,fontWeight:700,color:C.muted,minWidth:16}}>${medal(i)}</span><b style=${{flex:1,fontSize:13,lineHeight:1.15,minWidth:0,wordBreak:'break-word'}}>${r.name}</b><b style=${{fontSize:13,color:C.navy}}>${r.pct}%</b></div>
     ${bar(r.pct)}<div style=${{fontSize:10,marginTop:4,color:detail.warn?C.urgent:C.muted}}>${detail.text}</div></div>`
-  const emptyCol=html`<div class="muted" style=${{fontSize:12}}>Starts this week — no marks yet.</div>`
+  const emptyCol=html`<div class="muted" style=${{fontSize:12}}>No marks in this period yet.</div>`
   return html`<div>
-    <div style=${{display:'flex',gap:8,marginBottom:10}}>${[['week','This week (Mon–Fri)'],['month','This month']].map(([k,l])=>html`<button key=${k} class="chip ${range===k?'on':''}" style=${{flex:1}} onClick=${()=>setRange(k)}>${l}</button>`)}</div>
+    <div style=${{display:'flex',gap:6,marginBottom:10,flexWrap:'wrap'}}>${[['week','This week'],...monthOpts()].map(([k,l])=>html`<button key=${k} class="chip ${range===k?'on':''}" onClick=${()=>setRange(k)}>${l}</button>`)}</div>
     ${data===null?html`<div class="muted">Crunching the numbers…</div>`:html`<div>
       <div class="muted" style=${{fontSize:11,marginBottom:4}}>${fmt(meta.from)} – ${fmt(meta.to)}</div>
       <div class="muted" style=${{fontSize:10,marginBottom:10,lineHeight:1.3}}>Year 7–11 = overall daily attendance (present if in <b>any</b> session). Classes = morning register.</div>
@@ -512,13 +513,28 @@ function Attendance({profile}){
   async function setCode(id,code){
     await sb.from('attendance').upsert({pupil_id:id,on_date:date,phase:session,status:'absent',absence_code:code||null,logged_by:profile.id},{onConflict:'pupil_id,on_date,phase'})
     setRec(r=>({...r,[id]:{status:'absent',code}}))}
-  function exportCsv(){
-    const scope=current?current.ids:allIds
-    const rows=[['Date','Session','Register','Pupil','Year','Status','Absence code']]
-    scope.forEach(id=>{const p=byId[id];if(!p)return;const s=statusOf(id);const c=(rec[id]&&rec[id].code)||''
-      rows.push([date,session,current?current.name:'ALL',p.first_name+' '+p.last_name,p.academic_year||'',s,s==='absent'?c:''])})
-    const csv=rows.map(r=>r.map(x=>'"'+(x||'').toString().replace(/"/g,'""')+'"').join(',')).join(String.fromCharCode(10))
-    const url=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));const a=document.createElement('a');a.href=url;a.download='register_'+date+'_'+session+'.csv';a.click();URL.revokeObjectURL(url)}
+  async function exportCsv(){
+    if(!current){fire('Open a class register first');return}
+    const d0=new Date(date+'T00:00:00'),y=d0.getFullYear(),m=d0.getMonth()
+    const isod=x=>{const z=new Date(x.getTime()-x.getTimezoneOffset()*60000);return z.toISOString().slice(0,10)}
+    const from=isod(new Date(y,m,1)),to=isod(new Date(y,m+1,0))
+    let all=[],off=0
+    while(true){const {data,error}=await sb.from('attendance').select('pupil_id,on_date,status,absence_code,class_id').eq('phase',session).in('pupil_id',current.ids).gte('on_date',from).lte('on_date',to).range(off,off+999);if(error||!data||!data.length)break;all=all.concat(data);if(data.length<1000)break;off+=1000}
+    if(session==='morning')all=all.filter(a=>a.class_id===current.key)
+    const dates=[...new Set(all.map(a=>a.on_date))].sort()
+    if(!dates.length){fire('No marks saved for this month yet');return}
+    const mp={};all.forEach(a=>{mp[a.pupil_id+'|'+a.on_date]=a})
+    const abbr=a=>!a?'':a.status==='present'?'P':a.status==='late'?'L':a.status==='excused'?'E':(a.absence_code||'A')
+    const mLbl=new Date(y,m,1).toLocaleDateString('en-GB',{month:'long',year:'numeric'})
+    const head=['Pupil','Year',...dates.map(dt=>new Date(dt+'T00:00:00').toLocaleDateString('en-GB',{day:'2-digit',month:'short'})),'Present','Late','Absent','Attendance %']
+    const rows=[['Register: '+current.name+' — '+mLbl+' ('+session+')'],['Key: P=Present, L=Late, A=Absent, E=Excused · codes shown for coded absences'],[],head]
+    current.ids.map(id=>byId[id]).filter(Boolean).sort((a,b)=>(a.last_name||'').localeCompare(b.last_name||'')).forEach(p=>{
+      let pres=0,late=0,abs=0,marks=0
+      const cells=dates.map(dt=>{const a=mp[p.id+'|'+dt];if(a){marks++;if(a.status==='present')pres++;else if(a.status==='late')late++;else if(a.status==='absent')abs++}return abbr(a)})
+      const pct=marks?Math.round((pres+late)/marks*100)+'%':''
+      rows.push([p.first_name+' '+p.last_name,p.academic_year||'',...cells,pres,late,abs,pct])})
+    const csv=rows.map(r=>r.map(x=>'"'+(x==null?'':x).toString().replace(/"/g,'""')+'"').join(',')).join(String.fromCharCode(10))
+    const url=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));const a=document.createElement('a');a.href=url;a.download='register_'+current.name.replace(/[^a-z0-9]+/gi,'_')+'_'+from.slice(0,7)+'.csv';a.click();URL.revokeObjectURL(url)}
   const SESS=[['morning','Morning'],['afternoon','Afternoon'],['evening','Evening (6-8)'],['night','Night']]
   const list=current?current.ids.map(id=>byId[id]).filter(Boolean).filter(p=>(p.first_name+' '+p.last_name).toLowerCase().includes(q.toLowerCase())):[]
   const absentees=current?current.ids.map(id=>byId[id]).filter(p=>p&&statusOf(p.id)==='absent'):[]
@@ -542,7 +558,7 @@ function Attendance({profile}){
     ${pupils&&current&&html`<div style=${{marginTop:12}}>
       <div style=${{display:'flex',gap:8,alignItems:'center',marginBottom:10}}>
         <button class="chip" onClick=${()=>setReg(null)}>← Registers</button><b style=${{marginLeft:4}}>${current.name}</b>
-        <button class="chip" style=${{marginLeft:'auto'}} onClick=${exportCsv}>CSV</button>
+        <button class="chip" style=${{marginLeft:'auto'}} onClick=${exportCsv}>📄 Month CSV</button>
       </div>
       <div style=${{display:'flex',gap:8,marginBottom:10}}>${['mark','absentees'].map(v=>html`<button key=${v} class="chip ${view===v?'on':''}" onClick=${()=>setView(v)}>${v==='mark'?'Mark':'Absentees & codes'}</button>`)}</div>
       ${view==='mark'&&html`<div>
