@@ -259,6 +259,54 @@ function Engagement(){
       <span style=${{fontSize:15,flexShrink:0}}>${p.push?'🔔':''}${p.active?' 💬':''}${(!p.push&&!p.active)?'⚪':''}</span></div>`)}
   </div>`}
 
+function PraiseGrid({assignment,period,onBack}){
+  const [d,setD]=useState(null);const [vals,setVals]=useState({});const [busy,setBusy]=useState(false);const [toast,setToast]=useState('')
+  const fire=m=>{setToast(m);setTimeout(()=>setToast(''),2600)}
+  useEffect(()=>{(async()=>{const {data}=await sb.functions.invoke('praise-entry',{body:{action:'load',assignment_id:assignment.id,period}});if(data&&data.ok){setD(data);const v={};(data.pupils||[]).forEach(p=>{if(data.existing[p.id]!=null)v[p.id]=String(data.existing[p.id])});setVals(v)}else fire((data&&data.error)||'Error')})()},[])
+  if(!d)return html`<div class="muted">Loading pupils…</div>`
+  const ro=d.finalised
+  function setV(id,x){x=x.replace(/[^0-9.]/g,'');if(x!==''&&parseFloat(x)>10)x='10';setVals(v=>({...v,[id]:x}))}
+  async function save(){setBusy(true)
+    const scores=Object.entries(vals).filter(([_,x])=>x!==''&&x!=null).map(([pupil_id,x])=>({pupil_id,points:parseFloat(x)}))
+    const {data}=await sb.functions.invoke('praise-entry',{body:{action:'save',assignment_id:assignment.id,period,scores}})
+    setBusy(false);fire(data&&data.ok?('Saved ✓ '+data.saved+' scores'):((data&&data.error)||'Error saving'))}
+  const done=d.pupils.filter(p=>vals[p.id]!==undefined&&vals[p.id]!=='').length
+  return html`<div>
+    <div style=${{display:'flex',gap:8,alignItems:'center',marginBottom:8}}><button class="chip" onClick=${onBack}>← Classes</button><b>${assignment.group_value}</b><span class="muted" style=${{fontSize:11}}>${assignment.context==='school'?'School':'Madrasah'}</span></div>
+    ${ro&&html`<div class="card" style=${{padding:10,marginBottom:8,background:'#FBECC9',fontSize:12}}>This month is finalised — scores are locked.</div>`}
+    <div class="muted" style=${{fontSize:11,marginBottom:8}}>Score each pupil out of 10. ${done}/${d.pupils.length} done. Blank = not scored yet.</div>
+    ${d.pupils.length===0&&html`<div class="card muted" style=${{padding:16}}>No active pupils in this class.</div>`}
+    ${d.pupils.map(p=>html`<div key=${p.id} class="card" style=${{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'8px 12px',marginBottom:6}}>
+      <b style=${{fontSize:14}}>${p.name}</b>
+      <input class="in" style=${{marginTop:0,width:74,textAlign:'center',fontWeight:700}} inputmode="decimal" disabled=${ro} value=${vals[p.id]||''} placeholder="–" onInput=${e=>setV(p.id,e.target.value)}/></div>`)}
+    ${!ro&&d.pupils.length>0&&html`<button class="btn" style=${{marginTop:8}} disabled=${busy} onClick=${save}>${busy?'Saving…':'Save scores'}</button>`}
+    ${toast&&html`<div style=${{position:'fixed',left:'50%',bottom:24,transform:'translateX(-50%)',background:'#0E1D38',color:'#fff',padding:'10px 16px',borderRadius:999,fontSize:14}}>${toast}</div>`}
+  </div>`}
+
+function PraiseEntry(){
+  const [cols,setCols]=useState(null);const [sel,setSel]=useState(null)
+  const period=new Date().toISOString().slice(0,7)
+  async function load(){const {data}=await sb.functions.invoke('praise-entry',{body:{action:'my_columns',period}});setCols((data&&data.columns)||[])}
+  useEffect(()=>{load()},[])
+  if(cols===null)return html`<div class="muted">Loading your classes…</div>`
+  if(sel)return html`<${PraiseGrid} assignment=${sel} period=${period} onBack=${()=>{setSel(null);load()}}/>`
+  if(!cols.length)return html`<div class="card muted" style=${{padding:16}}>You have no praise columns yet. The office can assign them in Praise → Setup.</div>`
+  const monthLbl=new Date(period+'-01T00:00:00').toLocaleDateString('en-GB',{month:'long',year:'numeric'})
+  return html`<div>
+    <h2 class="serif" style=${{color:C.navy,marginTop:4}}>Praise points</h2>
+    <p class="muted" style=${{fontSize:12,marginTop:0}}>Scoring for <b>${monthLbl}</b>. Tap a class to fill in — each pupil out of 10.</p>
+    ${cols.map(c=>{const full=c.total>0&&c.filled>=c.total;return html`<div key=${c.id} class="card" style=${{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'12px 14px',marginBottom:8,cursor:'pointer'}} onClick=${()=>setSel(c)}>
+      <div><b>${c.group_value}</b><div class="muted" style=${{fontSize:11}}>${c.context==='school'?'School':'Madrasah'}</div></div>
+      <span class="tag" style=${{background:full?'#E5EEE7':'#FBECC9',color:full?C.green:'#8A6D1B',padding:'5px 11px',fontWeight:700}}>${c.filled}/${c.total}</span></div>`})}
+  </div>`}
+
+function Praise({profile,canManage}){
+  const [mode,setMode]=useState('entry')
+  return html`<div>
+    ${canManage&&html`<div style=${{display:'flex',gap:8,marginBottom:12}}>${[['entry','✏️ Enter points'],['setup','⚙️ Setup columns']].map(([k,l])=>html`<button key=${k} class="chip ${mode===k?'on':''}" style=${{flex:1}} onClick=${()=>setMode(k)}>${l}</button>`)}</div>`}
+    ${mode==='setup'&&canManage?html`<${PraiseSetup}/>`:html`<${PraiseEntry}/>`}
+  </div>`}
+
 function PraiseSetup(){
   const [d,setD]=useState(null);const [busy,setBusy]=useState(false);const [toast,setToast]=useState('')
   const [tid,setTid]=useState('');const [ctx,setCtx]=useState('school');const [gv,setGv]=useState('')
@@ -317,7 +365,7 @@ function Dashboard({profile,onSignOut}){
         <div style=${{color:'#AEBAD0',fontSize:10}}>Al Jamiatul Islamiyah</div></div></div>
       <button onClick=${onSignOut} style=${{background:'transparent',border:'1px solid rgba(255,255,255,.3)',color:'#fff',borderRadius:10,padding:'6px 10px',fontSize:12,cursor:'pointer'}}>Sign out</button></div>
     <div style=${{height:3,background:`linear-gradient(90deg,${C.gold},${C.goldSoft})`}}></div>
-    <div style=${{padding:'8px 16px 0',display:'flex',gap:8,flexWrap:'wrap'}}>${['overview','pupils','attendance','league',...(canManage?['engagement','praise']:[]),'detentions','announce','inbox'].map(t=>html`
+    <div style=${{padding:'8px 16px 0',display:'flex',gap:8,flexWrap:'wrap'}}>${['overview','pupils','attendance','league',...(canManage?['engagement']:[]),'praise','detentions','announce','inbox'].map(t=>html`
       <button key=${t} onClick=${()=>setTab(t)} class="chip ${tab===t?'on':''}">${t==='overview'?'Overview':t==='pupils'?'Pupils':t==='attendance'?'Attendance':t==='league'?'League':t==='engagement'?'Engagement':t==='praise'?'Praise':t==='detentions'?'Detentions':t==='announce'?'Announce':'Inbox'}</button>`)}</div>
     <div style=${{padding:16}}>
       ${pupils===null&&html`<div class="muted">Loading live data…</div>`}
@@ -350,7 +398,7 @@ function Dashboard({profile,onSignOut}){
       ${tab==='attendance'&&html`<${Attendance} profile=${profile}/>`}
       ${tab==='league'&&html`<${Leaderboard} profile=${profile}/>`}
       ${tab==='engagement'&&canManage&&html`<${Engagement}/>`}
-      ${tab==='praise'&&canManage&&html`<${PraiseSetup}/>`}
+      ${tab==='praise'&&html`<${Praise} profile=${profile} canManage=${canManage}/>`}
       ${tab==='detentions'&&html`<${Detentions} profile=${profile}/>`}
       ${editPupil&&html`<${PupilEditor} pupil=${editPupil} classes=${classes} onClose=${()=>setEditPupil(null)} onSaved=${m=>{setEditPupil(null);fire(m);load()}}/>`}
     </div>
