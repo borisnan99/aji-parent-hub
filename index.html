@@ -259,6 +259,38 @@ function Engagement(){
       <span style=${{fontSize:15,flexShrink:0}}>${p.push?'🔔':''}${p.active?' 💬':''}${(!p.push&&!p.active)?'⚪':''}</span></div>`)}
   </div>`}
 
+function PraiseSetup(){
+  const [d,setD]=useState(null);const [busy,setBusy]=useState(false);const [toast,setToast]=useState('')
+  const [tid,setTid]=useState('');const [ctx,setCtx]=useState('school');const [gv,setGv]=useState('')
+  const fire=m=>{setToast(m);setTimeout(()=>setToast(''),2600)}
+  async function load(){const {data}=await sb.functions.invoke('praise-admin',{body:{action:'list'}});if(data&&data.ok)setD(data);else fire('Could not load')}
+  useEffect(()=>{load()},[])
+  async function add(){if(!tid||!gv)return;setBusy(true)
+    const gk=ctx==='school'?'academic_year':'morning_class'
+    const {data}=await sb.functions.invoke('praise-admin',{body:{action:'add',teacher_id:tid,context:ctx,group_kind:gk,group_value:gv}})
+    setBusy(false);if(data&&data.ok){setGv('');load()}else fire((data&&data.error)||'Error')}
+  async function remove(id){await sb.functions.invoke('praise-admin',{body:{action:'remove',id}});load()}
+  if(!d)return html`<div class="muted">Loading praise setup…</div>`
+  const opts=ctx==='school'?d.years:d.classes
+  const byT={};d.assignments.forEach(a=>{(byT[a.teacher_name]=byT[a.teacher_name]||[]).push(a)})
+  const tnames=Object.keys(byT).sort()
+  return html`<div>
+    <h2 class="serif" style=${{color:C.navy,marginTop:4}}>Praise points — setup</h2>
+    <p class="muted" style=${{fontSize:12,marginTop:0}}>Each column = one teacher scoring a class out of 10. <b>${d.assignments.length}</b> columns set up across ${tnames.length} teachers.</p>
+    <div class="card" style=${{padding:12,marginBottom:14}}>
+      <div class="lbl">Add a column</div>
+      <select class="in" value=${tid} onChange=${e=>setTid(e.target.value)}><option value="">Choose teacher…</option>${d.teachers.map(t=>html`<option key=${t.id} value=${t.id}>${t.full_name}</option>`)}</select>
+      <div style=${{display:'flex',gap:8,marginTop:8}}>${[['school','School'],['madrasah','Madrasah']].map(([k,l])=>html`<button key=${k} class="chip ${ctx===k?'on':''}" style=${{flex:1}} onClick=${()=>{setCtx(k);setGv('')}}>${l}</button>`)}</div>
+      <select class="in" style=${{marginTop:8}} value=${gv} onChange=${e=>setGv(e.target.value)}><option value="">Choose ${ctx==='school'?'year group':'class'}…</option>${opts.map(o=>html`<option key=${o} value=${o}>${o}</option>`)}</select>
+      <button class="btn" style=${{marginTop:10}} disabled=${busy||!tid||!gv} onClick=${add}>${busy?'Adding…':'Add column'}</button>
+    </div>
+    ${tnames.map(tn=>html`<div key=${tn} class="card" style=${{padding:'10px 12px',marginBottom:8}}>
+      <b>${tn}</b>
+      <div style=${{display:'flex',flexWrap:'wrap',gap:6,marginTop:6}}>${byT[tn].slice().sort((a,b)=>a.context.localeCompare(b.context)||a.group_value.localeCompare(b.group_value)).map(a=>html`<span key=${a.id} class="chip" style=${{background:a.context==='school'?'#E8EEF6':'#EDE7F6'}}>${a.group_value} <span style=${{fontSize:9,color:C.muted}}>${a.context==='school'?'SCH':'MAD'}</span> <span style=${{cursor:'pointer',fontWeight:700,color:C.urgent,marginLeft:2}} onClick=${()=>remove(a.id)}>✕</span></span>`)}</div>
+    </div>`)}
+    ${toast&&html`<div style=${{position:'fixed',left:'50%',bottom:24,transform:'translateX(-50%)',background:'#0E1D38',color:'#fff',padding:'10px 16px',borderRadius:999,fontSize:14}}>${toast}</div>`}
+  </div>`}
+
 function Dashboard({profile,onSignOut}){
   const [pupils,setPupils]=useState(null);const [classes,setClasses]=useState([]);const [groups,setGroups]=useState([])
   const [anns,setAnns]=useState([]);const [tab,setTab]=useState('overview');const [q,setQ]=useState('');const [toast,setToast]=useState('')
@@ -285,8 +317,8 @@ function Dashboard({profile,onSignOut}){
         <div style=${{color:'#AEBAD0',fontSize:10}}>Al Jamiatul Islamiyah</div></div></div>
       <button onClick=${onSignOut} style=${{background:'transparent',border:'1px solid rgba(255,255,255,.3)',color:'#fff',borderRadius:10,padding:'6px 10px',fontSize:12,cursor:'pointer'}}>Sign out</button></div>
     <div style=${{height:3,background:`linear-gradient(90deg,${C.gold},${C.goldSoft})`}}></div>
-    <div style=${{padding:'8px 16px 0',display:'flex',gap:8,flexWrap:'wrap'}}>${['overview','pupils','attendance','league',...(canManage?['engagement']:[]),'detentions','announce','inbox'].map(t=>html`
-      <button key=${t} onClick=${()=>setTab(t)} class="chip ${tab===t?'on':''}">${t==='overview'?'Overview':t==='pupils'?'Pupils':t==='attendance'?'Attendance':t==='league'?'League':t==='engagement'?'Engagement':t==='detentions'?'Detentions':t==='announce'?'Announce':'Inbox'}</button>`)}</div>
+    <div style=${{padding:'8px 16px 0',display:'flex',gap:8,flexWrap:'wrap'}}>${['overview','pupils','attendance','league',...(canManage?['engagement','praise']:[]),'detentions','announce','inbox'].map(t=>html`
+      <button key=${t} onClick=${()=>setTab(t)} class="chip ${tab===t?'on':''}">${t==='overview'?'Overview':t==='pupils'?'Pupils':t==='attendance'?'Attendance':t==='league'?'League':t==='engagement'?'Engagement':t==='praise'?'Praise':t==='detentions'?'Detentions':t==='announce'?'Announce':'Inbox'}</button>`)}</div>
     <div style=${{padding:16}}>
       ${pupils===null&&html`<div class="muted">Loading live data…</div>`}
       ${tab==='overview'&&pupils&&html`<div>
@@ -318,6 +350,7 @@ function Dashboard({profile,onSignOut}){
       ${tab==='attendance'&&html`<${Attendance} profile=${profile}/>`}
       ${tab==='league'&&html`<${Leaderboard} profile=${profile}/>`}
       ${tab==='engagement'&&canManage&&html`<${Engagement}/>`}
+      ${tab==='praise'&&canManage&&html`<${PraiseSetup}/>`}
       ${tab==='detentions'&&html`<${Detentions} profile=${profile}/>`}
       ${editPupil&&html`<${PupilEditor} pupil=${editPupil} classes=${classes} onClose=${()=>setEditPupil(null)} onSaved=${m=>{setEditPupil(null);fire(m);load()}}/>`}
     </div>
