@@ -417,7 +417,11 @@ function Inbox(){
   const [compose,setCompose]=useState(false);const [parents,setParents]=useState(null);const [kids,setKids]=useState({});const [psearch,setPsearch]=useState('');const [picked,setPicked]=useState(null)
   async function load(){const {data}=await sb.from('conversations').select('*').order('last_message_at',{ascending:false});setConvs(data||[])
     const ids=[...new Set((data||[]).map(c=>c.parent_id))]
-    if(ids.length){const {data:ps}=await sb.from('profiles').select('id,full_name').in('id',ids);const m={};(ps||[]).forEach(p=>m[p.id]=p.full_name);setNames(m)}}
+    if(ids.length){const {data:ps}=await sb.from('profiles').select('id,full_name').in('id',ids);const m={};(ps||[]).forEach(p=>m[p.id]=p.full_name);setNames(m)
+      const {data:pp}=await sb.from('parent_pupil').select('parent_id,pupil_id').in('parent_id',ids)
+      const pids=[...new Set((pp||[]).map(x=>x.pupil_id))];let nm={}
+      if(pids.length){const {data:pu}=await sb.from('pupils').select('id,first_name,last_name').in('id',pids);(pu||[]).forEach(p=>nm[p.id]=p.first_name+' '+p.last_name)}
+      const km={};(pp||[]).forEach(x=>{(km[x.parent_id]=km[x.parent_id]||[]).push(nm[x.pupil_id])});setKids(k=>({...k,...km}))}}
   async function loadParents(){const {data:ps}=await sb.from('profiles').select('id,full_name').eq('role','parent').order('full_name');setParents(ps||[])
     const {data:pp}=await sb.from('parent_pupil').select('parent_id,pupil_id');const pids=[...new Set((pp||[]).map(x=>x.pupil_id))]
     let nm={};if(pids.length){const {data:pu}=await sb.from('pupils').select('id,first_name,last_name').in('id',pids);(pu||[]).forEach(p=>nm[p.id]=p.first_name+' '+p.last_name)}
@@ -428,7 +432,9 @@ function Inbox(){
   if(picked)return html`<div>
     <div class="card" style=${{padding:'10px 14px',marginBottom:10,background:C.navy,color:'#fff',border:'none'}}><b>${picked.full_name}</b><div style=${{fontSize:11,color:'#AEBAD0'}}>${(kids[picked.id]||[]).filter(Boolean).join(', ')||'Parent'}</div></div>
     <${Thread} newParentId=${picked.id} isStaff=${true} onBack=${()=>{setPicked(null);setCompose(false);load()}}/></div>`
-  if(open)return html`<${Thread} conversationId=${open.id} isStaff=${true} onBack=${()=>{setOpen(null);load()}}/>`
+  if(open)return html`<div>
+    <div class="card" style=${{padding:'10px 14px',marginBottom:10,background:C.navy,color:'#fff',border:'none'}}><b>${names[open.parent_id]||'Parent'}</b><div style=${{fontSize:12,color:C.goldSoft,fontWeight:600}}>${(kids[open.parent_id]||[]).filter(Boolean).join(', ')||'Parent'}</div></div>
+    <${Thread} conversationId=${open.id} isStaff=${true} onBack=${()=>{setOpen(null);load()}}/></div>`
   return html`<div>
     <button class="btn gold" style=${{marginBottom:12}} onClick=${()=>{setCompose(c=>!c);if(parents===null)loadParents()}}>${compose?'✕ Close':'✏️ New message to a parent'}</button>
     ${compose&&html`<div class="card" style=${{padding:12,marginBottom:14}}>
@@ -439,7 +445,7 @@ function Inbox(){
       </div></div>`}
     ${convs===null?html`<div class="muted">Loading…</div>`:convs.length===0?html`<div class="card muted" style=${{padding:16}}>No conversations yet. Start one above, or wait for a parent to message.</div>`:convs.map(c=>html`<div key=${c.id} class="card" style=${{padding:'12px 14px',marginBottom:8,cursor:'pointer'}} onClick=${()=>setOpen(c)}>
       <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center'}}><b>${names[c.parent_id]||'Parent'}</b><span class="muted" style=${{fontSize:11}}>${fmtTime(c.last_message_at)}</span></div>
-      <div class="muted" style=${{fontSize:12}}>${c.subject||'Message'}</div></div>`)}
+      <div style=${{fontSize:12,color:C.gold,fontWeight:600,marginTop:2}}>${(kids[c.parent_id]||[]).filter(Boolean).join(', ')||'—'}</div></div>`)}
   </div>`}
 function SchoolFeed(){
   const [items,setItems]=useState(null)
