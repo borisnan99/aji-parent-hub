@@ -57,14 +57,22 @@ const C={navy:'#14294D',gold:'#C4A24C',goldSoft:'#EFE4C4',ink:'#1B2438',muted:'#
 const PRIORITY={urgent:{label:'Urgent'},important:{label:'Important'},normal:{label:'Notice'}}
 
 function u8(b64){const pad='='.repeat((4-b64.length%4)%4);const s=(b64+pad).replace(/-/g,'+').replace(/_/g,'/');const r=atob(s);const a=new Uint8Array(r.length);for(let i=0;i<r.length;i++)a[i]=r.charCodeAt(i);return a}
-async function enablePush(userId){
-  if(!('serviceWorker'in navigator)||!('PushManager'in window)) return {error:'This browser doesn\u2019t support notifications.'}
-  const perm=await Notification.requestPermission(); if(perm!=='granted') return {error:'Notifications were not allowed.'}
+// Ensures a push subscription exists AND is saved server-side whenever permission is granted.
+// Self-healing: runs on every app open, so an already-granted device re-registers even if its row was lost.
+async function syncPush(userId){
+  if(!('serviceWorker'in navigator)||!('PushManager'in window)||typeof Notification==='undefined') return 'unsupported'
+  if(Notification.permission!=='granted') return 'not-granted'
   const reg=await navigator.serviceWorker.ready
-  const sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:u8(VAPID_PUBLIC)})
+  let sub=await reg.pushManager.getSubscription()
+  if(!sub) sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:u8(VAPID_PUBLIC)})
   const j=sub.toJSON()
   const {error}=await sb.from('push_subscriptions').upsert({user_id:userId,endpoint:j.endpoint,p256dh:j.keys.p256dh,auth:j.keys.auth,user_agent:navigator.userAgent},{onConflict:'endpoint'})
-  return {error:error?error.message:null}
+  return error?error.message:null
+}
+async function enablePush(userId){
+  if(!('serviceWorker'in navigator)||!('PushManager'in window)||typeof Notification==='undefined') return {error:'This browser doesn\u2019t support notifications.'}
+  const perm=await Notification.requestPermission(); if(perm!=='granted') return {error:'Notifications were not allowed.'}
+  try{const e=await syncPush(userId);return {error:(e&&e!=='not-granted'&&e!=='unsupported')?e:null}}catch(ex){return {error:String((ex&&ex.message)||ex)}}
 }
 
 function Crest({size=44,ink=C.navy,accent=C.gold}){return html`<svg width=${size} height=${size} viewBox="0 0 48 48" fill="none">
@@ -92,6 +100,7 @@ function NotifyCard({userId,fire}){
   const [state,setState]=useState(typeof Notification!=='undefined'?Notification.permission:'unsupported')
   const [canInstall,setCanInstall]=useState(!!deferredPrompt);const [showHow,setShowHow]=useState(false)
   useEffect(()=>{const h=()=>setCanInstall(true);window.addEventListener('caninstall',h);return()=>window.removeEventListener('caninstall',h)},[])
+  useEffect(()=>{if(userId&&typeof Notification!=='undefined'&&Notification.permission==='granted')syncPush(userId)},[userId])
   const isIOS=/iphone|ipad|ipod/i.test(navigator.userAgent)
   const standalone=window.matchMedia('(display-mode: standalone)').matches||window.navigator.standalone
   async function enable(){const {error}=await enablePush(userId);if(error)fire(error);else{setState('granted');fire('Notifications enabled on this device')}}
