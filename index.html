@@ -432,6 +432,30 @@ function Inbox(){
       <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center'}}><b>${names[c.parent_id]||'Parent'}</b><span class="muted" style=${{fontSize:11}}>${fmtTime(c.last_message_at)}</span></div>
       <div class="muted" style=${{fontSize:12}}>${c.subject||'Message'}</div></div>`)}
   </div>`}
+function SchoolFeed(){
+  const [items,setItems]=useState(null)
+  useEffect(()=>{(async()=>{const {data,error}=await sb.functions.invoke('my-announcements');if(error||!data){setItems([]);return}setItems(data.announcements||[])})()},[])
+  if(items===null)return html`<div class="muted" style=${{fontSize:12,margin:'8px 0'}}>Loading announcements…</div>`
+  if(!items.length)return null
+  const fmt=t=>{try{return new Date(t).toLocaleString('en-GB',{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'})}catch(_){return ''}}
+  const pColor=p=>p==='urgent'?C.urgent:p==='important'?C.gold:C.navy
+  const icon=t=>(t||'').includes('pdf')?'📄':(t||'').includes('image')?'🖼️':(t||'').includes('video')?'🎬':(t||'').includes('word')||(t||'').includes('document')?'📝':'📎'
+  return html`<div style=${{marginBottom:18}}>
+    <h2 class="serif" style=${{color:C.navy,margin:'6px 0 8px'}}>📢 From the school</h2>
+    ${items.map(a=>html`<div key=${a.id} class="card" style=${{padding:'12px 14px',marginBottom:10}}>
+      <div style=${{display:'flex',justifyContent:'space-between',alignItems:'baseline',gap:8}}>
+        <b style=${{color:C.navy,fontSize:15}}>${a.title}</b>
+        ${a.priority&&a.priority!=='normal'?html`<span class="tag" style=${{background:pColor(a.priority),color:'#fff',fontSize:10,padding:'2px 8px',flexShrink:0}}>${a.priority==='urgent'?'URGENT':'Important'}</span>`:''}</div>
+      <div class="muted" style=${{fontSize:11,margin:'2px 0 8px'}}>${fmt(a.publish_at)}</div>
+      ${a.body?html`<div style=${{fontSize:14,whiteSpace:'pre-wrap',lineHeight:1.5}}>${a.body}</div>`:''}
+      ${a.attachments&&a.attachments.length?html`<div style=${{marginTop:10,display:'flex',flexDirection:'column',gap:6}}>
+        ${a.attachments.map((f,i)=>f.url?html`<a key=${i} href=${f.url} target="_blank" rel="noopener" style=${{display:'flex',alignItems:'center',gap:8,padding:'9px 11px',textDecoration:'none',color:C.navy,background:'#FAF8F3',border:'1px solid '+C.line,borderRadius:10}}>
+          <span style=${{fontSize:18}}>${icon(f.type)}</span>
+          <span style=${{fontSize:13,fontWeight:600,wordBreak:'break-word',minWidth:0}}>${f.name}</span>
+          <span style=${{marginLeft:'auto',fontSize:11,color:C.muted,flexShrink:0}}>Open ›</span></a>`:html`<span key=${i} class="muted" style=${{fontSize:12}}>📎 ${f.name}</span>`)}</div>`:''}
+    </div>`)}
+  </div>`}
+
 function ParentApp({profile,onSignOut}){
   const [cid,setCid]=useState(undefined);const [toast,setToast]=useState('')
   const fire=m=>{setToast(m);setTimeout(()=>setToast(''),3200)}
@@ -445,6 +469,7 @@ function ParentApp({profile,onSignOut}){
     <div style=${{height:3,background:`linear-gradient(90deg,${C.gold},${C.goldSoft})`}}></div>
     <div style=${{padding:16}}>
       <${NotifyCard} userId=${profile.id} fire=${fire}/>
+      <${SchoolFeed}/>
       <h2 class="serif" style=${{color:C.navy,margin:'6px 0 2px'}}>Message the school</h2>
       <p class="muted" style=${{fontSize:12,marginTop:0}}>Private — only you and the school office can see this.</p>
       ${cid===undefined?html`<div class="muted">Loading…</div>`:html`<${Thread} conversationId=${cid} isStaff=${false}/>`}
