@@ -60,6 +60,23 @@ Deno.serve(async (req) => {
       } else if (wantEmail && !brevoReady) { emailStatus = "skipped_no_sender"; }
       await svc.from("announcement_recipients").upsert({ announcement_id: ann.id, parent_id: pid, email_status: emailStatus, delivered_at: hasPush ? new Date().toISOString() : null });
     }
+    // Ofsted filing record → Principal's inbox (timestamp, audience, reach, the file itself)
+    try {
+      const logEmail = cfg.comms_log_email || cfg.brevo_sender_email;
+      if (brevoReady && logEmail) {
+        const { data: gnames } = await svc.from("groups").select("name").in("id", group_ids);
+        const audience = (gnames ?? []).map((g) => g.name).join(", ") || "(none)";
+        const when = new Date().toLocaleString("en-GB", { dateStyle: "full", timeStyle: "short", timeZone: "Europe/London" });
+        const attLines = attachments.length ? attachments.map((a) => "• " + a.name).join("<br/>") : "—";
+        const html = `<div style="font-family:Arial,Helvetica,sans-serif;max-width:600px;margin:auto;color:#1B2438;font-size:14px;line-height:1.6"><div style="background:#14294D;color:#fff;padding:14px 18px;border-radius:10px 10px 0 0"><b style="font-family:Georgia,serif;font-size:16px">Parent Communication — Record</b><br><span style="color:#C9D3E6;font-size:12px">Al Jamiatul Islamiyah · Bolton Darul Uloom</span></div><div style="border:1px solid #E4DECF;border-top:none;border-radius:0 0 10px 10px;padding:16px"><p style="margin:0 0 10px">Automatic filing record of a message sent to parents through the Parent Hub.</p><table style="border-collapse:collapse;width:100%;font-size:14px"><tr><td style="padding:6px 10px 6px 0;color:#6E6A60;vertical-align:top">Sent</td><td style="padding:6px 0"><b>${when}</b></td></tr><tr><td style="padding:6px 10px 6px 0;color:#6E6A60;vertical-align:top">Title</td><td style="padding:6px 0"><b>${title}</b></td></tr><tr><td style="padding:6px 10px 6px 0;color:#6E6A60;vertical-align:top">Priority</td><td style="padding:6px 0">${priority}</td></tr><tr><td style="padding:6px 10px 6px 0;color:#6E6A60;vertical-align:top">Sent to</td><td style="padding:6px 0"><b>${audience}</b></td></tr><tr><td style="padding:6px 10px 6px 0;color:#6E6A60;vertical-align:top">Reached</td><td style="padding:6px 0">${parentIds.size} families · ${pushed} in-app alerts · ${emailed} emailed</td></tr><tr><td style="padding:6px 10px 6px 0;color:#6E6A60;vertical-align:top">Attachments</td><td style="padding:6px 0">${attLines}</td></tr></table><div style="margin-top:12px;padding:10px 12px;background:#FAF8F3;border:1px solid #E8E3D6;border-radius:8px"><b>Message:</b><br/><span style="white-space:pre-wrap">${bodyText || "(no body text)"}</span></div><p style="color:#6E6A60;font-size:12px;margin-top:14px">Keep this email for your records. Ref: ${ann.id}</p></div></div>`;
+        const fileAtts = [];
+        for (const a of attachments) {
+          try { const { data: su } = await svc.storage.from("attachments").createSignedUrl(a.path, 600);
+            if (su?.signedUrl) { const rf = await fetch(su.signedUrl); if (rf.ok) { const ab = await rf.arrayBuffer(); if (ab.byteLength <= 5000000) { const buf = new Uint8Array(ab); let bin = ""; for (let i = 0; i < buf.length; i++) bin += String.fromCharCode(buf[i]); fileAtts.push({ name: a.name, content: btoa(bin) }); } } } } catch (_) { /* skip */ }
+        }
+        await fetch("https://api.brevo.com/v3/smtp/email", { method: "POST", headers: { "api-key": cfg.brevo_api_key, "content-type": "application/json", accept: "application/json" }, body: JSON.stringify({ sender: { name: "Parent Hub — Records", email: cfg.brevo_sender_email }, to: [{ email: logEmail }], subject: "[Comms record] " + title, htmlContent: html, attachment: fileAtts.length ? fileAtts : undefined }) });
+      }
+    } catch (_) { /* filing email is best-effort */ }
     return json({ ok: true, announcement_id: ann.id, recipients: parentIds.size, pushed, emailed, email_ready: brevoReady, attachments: attachments.length });
   } catch (e) { return json({ error: String(e?.message ?? e) }, 500); }
 });
