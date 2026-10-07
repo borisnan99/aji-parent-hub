@@ -300,11 +300,45 @@ function PraiseEntry(){
       <span class="tag" style=${{background:full?'#E5EEE7':'#FBECC9',color:full?C.green:'#8A6D1B',padding:'5px 11px',fontWeight:700}}>${c.filled}/${c.total}</span></div>`})}
   </div>`}
 
-function Praise({profile,canManage}){
-  const [mode,setMode]=useState('entry')
+function PraiseCollation(){
+  const [d,setD]=useState(null);const [period,setPeriod]=useState(null);const [err,setErr]=useState('')
+  async function load(p){setD(null);const {data,error}=await sb.functions.invoke('praise-collation',{body:p?{period:p}:{}});if(error||(data&&data.error)){setErr((data&&data.error)||error.message);return}setD(data);setPeriod(data.period)}
+  useEffect(()=>{load()},[])
+  if(err)return html`<div class="card muted" style=${{padding:16}}>Couldn't load collation: ${err}</div>`
+  if(!d)return html`<div class="muted">Loading results…</div>`
+  if(!d.periods.length)return html`<div class="card muted" style=${{padding:16}}>No finalised months yet. Results appear here once a month is collated.</div>`
+  const mlbl=p=>{const[y,m]=p.split('-');return new Date(+y,+m-1,1).toLocaleDateString('en-GB',{month:'short',year:'numeric'})}
+  const s=d.summary
+  const medal=a=>a==='Gold'?{bg:'#EFE4C4',fg:'#6B5212',t:'🥇 Gold'}:a==='Silver'?{bg:'#E9ECEF',fg:'#565C64',t:'🥈 Silver'}:a==='Bronze'?{bg:'#F0E0CE',fg:'#6E4517',t:'🥉 Bronze'}:{bg:'#F4F3EE',fg:C.muted,t:'—'}
+  const delta=s.prev_avg!=null?(s.avg_pct-s.prev_avg):null
   return html`<div>
-    ${canManage&&html`<div style=${{display:'flex',gap:8,marginBottom:12}}>${[['entry','✏️ Enter points'],['setup','⚙️ Setup columns']].map(([k,l])=>html`<button key=${k} class="chip ${mode===k?'on':''}" style=${{flex:1}} onClick=${()=>setMode(k)}>${l}</button>`)}</div>`}
-    ${mode==='setup'&&canManage?html`<${PraiseSetup}/>`:html`<${PraiseEntry}/>`}
+    <h2 class="serif" style=${{color:C.navy,marginTop:4}}>Praise points — collation</h2>
+    <div style=${{display:'flex',gap:6,flexWrap:'wrap',margin:'8px 0 12px'}}>${d.periods.map(p=>html`<button key=${p} class="chip ${period===p?'on':''}" onClick=${()=>{setPeriod(p);load(p)}}>${mlbl(p)}</button>`)}</div>
+    <div style=${{display:'flex',gap:8,flexWrap:'wrap',marginBottom:10}}>
+      <div class="card" style=${{flex:'1 1 110px',padding:'10px 12px',background:C.navy,color:'#fff',border:'none'}}><div style=${{fontSize:10,color:'#AEBAD0'}}>Class average</div><div class="serif" style=${{fontSize:22,fontWeight:700}}>${s.avg_pct}%</div>${delta!=null?html`<div style=${{fontSize:10,color:delta>=0?'#9BE3B4':'#F3B0A8'}}>${delta>=0?'▲':'▼'} ${Math.abs(delta).toFixed(1)} vs ${mlbl(s.prev_period)}</div>`:''}</div>
+      <div class="card" style=${{flex:'1 1 70px',padding:'10px 12px',textAlign:'center'}}><div style=${{fontSize:20}}>🥇</div><div class="serif" style=${{fontSize:18,fontWeight:700,color:C.navy}}>${s.gold}</div><div class="muted" style=${{fontSize:10}}>Gold</div></div>
+      <div class="card" style=${{flex:'1 1 70px',padding:'10px 12px',textAlign:'center'}}><div style=${{fontSize:20}}>🥈</div><div class="serif" style=${{fontSize:18,fontWeight:700,color:C.navy}}>${s.silver}</div><div class="muted" style=${{fontSize:10}}>Silver</div></div>
+      <div class="card" style=${{flex:'1 1 70px',padding:'10px 12px',textAlign:'center'}}><div style=${{fontSize:20}}>🥉</div><div class="serif" style=${{fontSize:18,fontWeight:700,color:C.navy}}>${s.bronze}</div><div class="muted" style=${{fontSize:10}}>Bronze</div></div>
+    </div>
+    <div class="muted" style=${{fontSize:11,marginBottom:8}}>${s.awarded} of ${s.total} pupils earned a certificate this month. Gold 95–100% · Silver 90–94% · Bronze 85–89%.</div>
+    <div class="lbl" style=${{marginBottom:4}}>By class (average %)</div>
+    <div style=${{display:'flex',gap:6,flexWrap:'wrap',marginBottom:12}}>${s.groups.map(g=>html`<span key=${g.group} class="chip">${g.group} <b style=${{color:C.gold}}>${g.avg}%</b></span>`)}</div>
+    <div class="lbl" style=${{marginBottom:6}}>Full results</div>
+    ${d.rows.map(r=>{const m=medal(r.award);return html`<div key=${r.id} class="card" style=${{display:'flex',alignItems:'center',gap:8,padding:'7px 11px',marginBottom:5}}>
+      <span style=${{fontSize:11,fontWeight:700,color:C.muted,minWidth:22}}>${r.rank||''}</span>
+      <div style=${{flex:1,minWidth:0}}><b style=${{fontSize:13}}>${r.student_name}</b><div class="muted" style=${{fontSize:10}}>${r.group_name}${r.year?' · Yr '+r.year:''}${r.deductions<0?' · '+r.deductions+' sanction':''}</div></div>
+      <b style=${{fontSize:14,color:C.navy,minWidth:46,textAlign:'right'}}>${(+r.pct).toFixed(1)}%</b>
+      <span class="tag" style=${{background:m.bg,color:m.fg,padding:'3px 8px',fontSize:10,fontWeight:700,minWidth:62,textAlign:'center'}}>${m.t}</span></div>`})}
+  </div>`}
+
+function Praise({profile,canManage}){
+  const isLead=profile&&(profile.email||'').toLowerCase()==='imteyaz.omarji@boltondarululoom.org.uk'
+  const canCollate=canManage||isLead
+  const [mode,setMode]=useState('entry')
+  const tabs=[['entry','✏️ Enter points'],...(canManage?[['setup','⚙️ Setup columns']]:[]),...(canCollate?[['collation','📊 Collation']]:[])]
+  return html`<div>
+    ${tabs.length>1&&html`<div style=${{display:'flex',gap:8,marginBottom:12,flexWrap:'wrap'}}>${tabs.map(([k,l])=>html`<button key=${k} class="chip ${mode===k?'on':''}" style=${{flex:'1 1 auto'}} onClick=${()=>setMode(k)}>${l}</button>`)}</div>`}
+    ${mode==='setup'&&canManage?html`<${PraiseSetup}/>`:mode==='collation'&&canCollate?html`<${PraiseCollation}/>`:html`<${PraiseEntry}/>`}
   </div>`}
 
 function PraiseSetup(){
