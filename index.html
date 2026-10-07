@@ -607,10 +607,37 @@ function ParentApp({profile,onSignOut}){
     ${toast&&html`<div style=${{position:'fixed',left:'50%',bottom:24,transform:'translateX(-50%)',background:'#0E1D38',color:'#fff',padding:'10px 16px',borderRadius:999,fontSize:14}}>${toast}</div>`}
   </div>`}
 
+function RegisterAssign(){
+  const [d,setD]=useState(null);const [busy,setBusy]=useState('');const [toast,setToast]=useState('');const [pick,setPick]=useState({})
+  const fire=m=>{setToast(m);setTimeout(()=>setToast(''),2400)}
+  async function load(){const {data}=await sb.functions.invoke('register-admin',{body:{action:'list'}});if(data&&data.ok)setD(data);else fire('Could not load')}
+  useEffect(()=>{load()},[])
+  if(!d)return html`<div class="muted">Loading register assignments…</div>`
+  const tname={};d.teachers.forEach(t=>tname[t.id]=t.full_name)
+  const byClass={};d.assignments.forEach(a=>{(byClass[a.class_id]=byClass[a.class_id]||[]).push(a.user_id)})
+  async function add(cid){const uid=pick[cid];if(!uid)return;setBusy(cid+uid)
+    const {data}=await sb.functions.invoke('register-admin',{body:{action:'add',class_id:cid,user_id:uid}})
+    setBusy('');if(data&&data.ok){setPick(p=>({...p,[cid]:''}));await load();fire('Added')}else fire((data&&data.error)||'Error')}
+  async function rm(cid,uid){setBusy(cid+uid);await sb.functions.invoke('register-admin',{body:{action:'remove',class_id:cid,user_id:uid}});setBusy('');await load();fire('Removed')}
+  return html`<div>
+    <p class="muted" style=${{fontSize:12,marginTop:0}}>Allocate which teachers can take each morning class register. A teacher sees a class in their register list once added here.</p>
+    ${d.classes.map(c=>{const assigned=byClass[c.id]||[];const avail=d.teachers.filter(t=>!assigned.includes(t.id))
+      return html`<div key=${c.id} class="card" style=${{padding:'11px 13px',marginBottom:8}}>
+        <b style=${{color:C.navy}}>${c.name}</b>
+        <div style=${{display:'flex',flexWrap:'wrap',gap:6,margin:'7px 0'}}>${assigned.length?assigned.map(uid=>html`<span key=${uid} class="chip" style=${{background:'#E8EEF6'}}>${tname[uid]||'?'} <span style=${{cursor:'pointer',fontWeight:700,color:C.urgent,marginLeft:3}} onClick=${()=>rm(c.id,uid)}>✕</span></span>`):html`<span class="muted" style=${{fontSize:12}}>No teachers assigned yet</span>`}</div>
+        <div style=${{display:'flex',gap:6}}>
+          <select class="in" style=${{marginTop:0,flex:1}} value=${pick[c.id]||''} onChange=${e=>setPick(p=>({...p,[c.id]:e.target.value}))}><option value="">Add a teacher…</option>${avail.map(t=>html`<option key=${t.id} value=${t.id}>${t.full_name}</option>`)}</select>
+          <button class="btn" style=${{width:'auto',padding:'8px 14px'}} disabled=${!pick[c.id]||busy} onClick=${()=>add(c.id)}>Add</button>
+        </div>
+      </div>`})}
+    ${toast&&html`<div style=${{position:'fixed',left:'50%',bottom:24,transform:'translateX(-50%)',background:'#0E1D38',color:'#fff',padding:'10px 16px',borderRadius:999,fontSize:14}}>${toast}</div>`}
+  </div>`}
+
 function Attendance({profile}){
   const today=new Date().toISOString().slice(0,10)
   const [date,setDate]=useState(today)
   const [session,setSession]=useState('morning')
+  const [amode,setAmode]=useState('take')
   const [reg,setReg]=useState(null)
   const [pupils,setPupils]=useState(null);const [classes,setClasses]=useState([]);const [enrol,setEnrol]=useState({})
   const [codes,setCodes]=useState([]);const [rec,setRec]=useState({});const [access,setAccess]=useState(null);const [myClasses,setMyClasses]=useState([])
@@ -694,6 +721,8 @@ function Attendance({profile}){
   const list=current?current.ids.map(id=>byId[id]).filter(Boolean).filter(p=>(p.first_name+' '+p.last_name).toLowerCase().includes(q.toLowerCase())):[]
   const absentees=current?current.ids.map(id=>byId[id]).filter(p=>p&&statusOf(p.id)==='absent'):[]
   return html`<div>
+    ${profile.role==='admin'&&html`<div style=${{display:'flex',gap:8,marginBottom:10}}>${[['take','📋 Take register'],['assign','👥 Assign teachers']].map(([k,l])=>html`<button key=${k} class="chip ${amode===k?'on':''}" style=${{flex:1}} onClick=${()=>setAmode(k)}>${l}</button>`)}</div>`}
+    ${amode==='assign'&&profile.role==='admin'?html`<${RegisterAssign}/>`:html`<div>
     <div style=${{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
       <input class="in" type="date" style=${{marginTop:0,width:'auto'}} value=${date} onInput=${e=>setDate(e.target.value)}/>
       ${SESS.filter(([k])=>canSess(k)).map(([k,lbl])=>html`<button key=${k} class="chip ${session===k?'on':''}" onClick=${()=>setSession(k)}>${lbl}</button>`)}
@@ -734,6 +763,7 @@ function Attendance({profile}){
             ${codes.map(c=>html`<option key=${c.code} value=${c.code}>${c.code} - ${c.label}</option>`)}
           </select></div>`)}
       </div>`}
+    </div>`}
     </div>`}
     ${toast&&html`<div style=${{position:'fixed',left:'50%',bottom:24,transform:'translateX(-50%)',background:'#0E1D38',color:'#fff',padding:'10px 16px',borderRadius:999,fontSize:14,maxWidth:'90%',textAlign:'center'}}>${toast}</div>`}
   </div>`}
