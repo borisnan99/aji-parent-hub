@@ -654,8 +654,8 @@ function Attendance({profile}){
     setPupils(p.data||[]);setClasses(c.data||[]);setCodes(cd.data||[]);setAccess(ac.data||{});setMyClasses((ct.data||[]).map(x=>x.class_id))
     const m={};(e.data||[]).forEach(r=>{(m[r.class_id]=m[r.class_id]||[]).push(r.pupil_id)});setEnrol(m)
   })()},[])
-  async function loadRecords(){const {data}=await sb.from('attendance').select('pupil_id,status,absence_code,late_notified_at').eq('on_date',date).eq('phase',session)
-    const m={};(data||[]).forEach(r=>m[r.pupil_id]={status:r.status,code:r.absence_code,notified:r.late_notified_at});setRec(m)}
+  async function loadRecords(){const {data}=await sb.from('attendance').select('pupil_id,status,absence_code,late_notified_at,note').eq('on_date',date).eq('phase',session)
+    const m={};(data||[]).forEach(r=>m[r.pupil_id]={status:r.status,code:r.absence_code,notified:r.late_notified_at,note:r.note});setRec(m)}
   useEffect(()=>{loadRecords();setReg(null)},[date,session])
   useEffect(()=>{const ch=sb.channel('att-'+date+'-'+session).on('postgres_changes',{event:'*',schema:'parent_hub',table:'attendance',filter:'on_date=eq.'+date},()=>loadRecords()).subscribe();return()=>sb.removeChannel(ch)},[date,session])
   const isFull=profile.role==='admin'||(access&&access.is_full)
@@ -694,7 +694,11 @@ function Attendance({profile}){
     setBusy(false);fire(error?('Error: '+error.message):('Register saved'+note));if(!error)loadRecords()}
   async function setCode(id,code){
     await sb.from('attendance').upsert({pupil_id:id,on_date:date,phase:session,status:'absent',absence_code:code||null,logged_by:profile.id},{onConflict:'pupil_id,on_date,phase'})
-    setRec(r=>({...r,[id]:{status:'absent',code}}))}
+    setRec(r=>({...r,[id]:{...(r[id]||{}),status:'absent',code}}))}
+  function onNote(id,note){setRec(r=>({...r,[id]:{...(r[id]||{}),status:'absent',note}}))}
+  async function saveNote(id,note){
+    await sb.from('attendance').upsert({pupil_id:id,on_date:date,phase:session,status:'absent',note:(note||'').trim()||null,logged_by:profile.id},{onConflict:'pupil_id,on_date,phase'})
+    fire('Comment saved')}
   async function exportCsv(){
     if(!current){fire('Open a class register first');return}
     const d0=new Date(date+'T00:00:00'),y=d0.getFullYear(),m=d0.getMonth()
@@ -761,7 +765,8 @@ function Attendance({profile}){
           <select class="in" style=${{marginTop:8,padding:'8px'}} value=${(rec[p.id]&&rec[p.id].code)||''} onChange=${e=>setCode(p.id,e.target.value)}>
             <option value="">- reason -</option>
             ${codes.map(c=>html`<option key=${c.code} value=${c.code}>${c.code} - ${c.label}</option>`)}
-          </select></div>`)}
+          </select>
+          <textarea class="in" style=${{marginTop:8,padding:'8px',minHeight:58,resize:'vertical',fontFamily:'inherit'}} placeholder="Add a note on the situation — e.g. illness, and what the parents have said…" value=${(rec[p.id]&&rec[p.id].note)||''} onInput=${e=>onNote(p.id,e.target.value)} onBlur=${e=>saveNote(p.id,e.target.value)}></textarea></div>`)}
       </div>`}
     </div>`}
     </div>`}
