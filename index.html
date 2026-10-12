@@ -334,11 +334,44 @@ function PraiseCollation(){
 function Praise({profile,canManage}){
   const isLead=profile&&(profile.email||'').toLowerCase()==='imteyaz.omarji@boltondarululoom.org.uk'
   const canCollate=canManage||isLead
+  const canSetup=canManage||isLead
   const [mode,setMode]=useState('entry')
-  const tabs=[['entry','✏️ Enter points'],...(canManage?[['setup','⚙️ Setup columns']]:[]),...(canCollate?[['collation','📊 Collation']]:[])]
+  const tabs=[['entry','✏️ Enter points'],...(canSetup?[['setup','⚙️ Setup columns'],['progress','✅ Who\'s done']]:[]),...(canCollate?[['collation','📊 Collation']]:[])]
   return html`<div>
     ${tabs.length>1&&html`<div style=${{display:'flex',gap:8,marginBottom:12,flexWrap:'wrap'}}>${tabs.map(([k,l])=>html`<button key=${k} class="chip ${mode===k?'on':''}" style=${{flex:'1 1 auto'}} onClick=${()=>setMode(k)}>${l}</button>`)}</div>`}
-    ${mode==='setup'&&canManage?html`<${PraiseSetup}/>`:mode==='collation'&&canCollate?html`<${PraiseCollation}/>`:html`<${PraiseEntry}/>`}
+    ${mode==='setup'&&canSetup?html`<${PraiseSetup}/>`:mode==='progress'&&canSetup?html`<${PraiseProgress}/>`:mode==='collation'&&canCollate?html`<${PraiseCollation}/>`:html`<${PraiseEntry}/>`}
+  </div>`}
+
+function PraiseProgress(){
+  const [d,setD]=useState(null);const [period,setPeriod]=useState(null);const [err,setErr]=useState('')
+  async function load(p){setD(null);const {data,error}=await sb.functions.invoke('praise-admin',{body:{action:'progress',...(p?{period:p}:{})}});if(error||(data&&data.error)){setErr((data&&data.error)||(error&&error.message)||'Error');return}setErr('');setD(data);setPeriod(data.period)}
+  useEffect(()=>{load()},[])
+  const fmtP=p=>{const a=p.split('-');return new Date(+a[0],+a[1]-1,1).toLocaleDateString('en-GB',{month:'long',year:'numeric'})}
+  const col=st=>st==='done'?{bg:'#E5EEE7',fg:C.green,t:'Done'}:st==='partial'?{bg:'#FBECC9',fg:'#8A6D1B',t:'In progress'}:{bg:C.urgentSoft,fg:C.urgent,t:'Not started'}
+  if(err)return html`<div class="card muted" style=${{padding:16}}>Couldn't load: ${err}</div>`
+  if(!d)return html`<div class="muted">Loading…</div>`
+  const s=d.summary
+  const row=t=>{const c=col(t.status)
+    return html`<div key=${t.teacher_id} class="card" style=${{padding:'10px 12px',marginBottom:8}}>
+      <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center'}}><b>${t.teacher_name}</b><span class="tag" style=${{background:c.bg,color:c.fg,padding:'4px 10px'}}>${c.t} · ${t.done_columns}/${t.total_columns}</span></div>
+      <div style=${{display:'flex',flexWrap:'wrap',gap:6,marginTop:6}}>${t.columns.map(cc=>html`<span key=${cc.assignment_id} class="chip" style=${{background:cc.done?'#E5EEE7':cc.filled>0?'#FBECC9':'#F3EFE6',fontSize:11}}>${cc.group_value} <span style=${{fontSize:9,color:C.muted}}>${cc.context==='school'?'SCH':'MAD'} ${cc.filled}/${cc.total}</span></span>`)}</div>
+    </div>`}
+  const todo=d.teachers.filter(t=>t.status!=='done'),done=d.teachers.filter(t=>t.status==='done')
+  return html`<div>
+    <h2 class="serif" style=${{color:C.navy,marginTop:4}}>Praise points — who's done</h2>
+    <p class="muted" style=${{fontSize:12,marginTop:0}}>Tracks which teachers have entered their points for <b>${period?fmtP(period):'this month'}</b>. Chase the ones still to do.</p>
+    ${d.periods&&d.periods.length>1&&html`<select class="in" style=${{maxWidth:220,marginBottom:4}} value=${period} onChange=${e=>load(e.target.value)}>${d.periods.map(p=>html`<option key=${p} value=${p}>${fmtP(p)}</option>`)}</select>`}
+    <div class="card" style=${{display:'flex',gap:18,padding:'12px 16px',marginTop:8,background:C.navy,color:'#fff',border:'none'}}>
+      <div><div style=${{fontSize:11,color:'#AEBAD0'}}>Done</div><div class="serif" style=${{fontSize:24,fontWeight:700,color:'#9FD8A7'}}>${s.done}</div></div>
+      <div><div style=${{fontSize:11,color:'#AEBAD0'}}>In progress</div><div class="serif" style=${{fontSize:24,fontWeight:700,color:'#E9C46A'}}>${s.partial}</div></div>
+      <div><div style=${{fontSize:11,color:'#AEBAD0'}}>Not started</div><div class="serif" style=${{fontSize:24,fontWeight:700,color:C.goldSoft}}>${s.not_started}</div></div>
+      <div style=${{marginLeft:'auto',textAlign:'right'}}><div style=${{fontSize:11,color:'#AEBAD0'}}>Teachers</div><div class="serif" style=${{fontSize:24,fontWeight:700}}>${s.teachers}</div></div>
+    </div>
+    ${todo.length>0&&html`<div class="muted" style=${{fontSize:12,margin:'12px 0 6px'}}><b>⏳ Still to do — chase these (${todo.length})</b></div>`}
+    ${todo.map(row)}
+    ${done.length>0&&html`<div class="muted" style=${{fontSize:12,margin:'14px 0 6px'}}><b>✅ Completed (${done.length})</b></div>`}
+    ${done.map(row)}
+    ${d.teachers.length===0&&html`<div class="card muted" style=${{padding:16}}>No praise columns set up yet. Add them in Setup.</div>`}
   </div>`}
 
 function PraiseSetup(){
