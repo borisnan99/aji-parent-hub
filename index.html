@@ -722,10 +722,190 @@ function Supervisor({profile}){
     ${toast&&html`<div style=${{position:'fixed',left:'50%',bottom:24,transform:'translateX(-50%)',background:'#0E1D38',color:'#fff',padding:'10px 16px',borderRadius:999,fontSize:14,maxWidth:'90%',textAlign:'center'}}>${toast}</div>`}
   </div>`}
 
+const BOARD_TEAM_NAMES=['gulfam khan','zubair patel','yasin patel','ihsaanul haque','omar sher']
+function canBoardTeam(p){if(!p)return false;if(p.role==='admin')return true;return BOARD_TEAM_NAMES.includes((p.full_name||'').trim().toLowerCase())}
+const SAFE_CATEGORIES=['Welfare / wellbeing','Physical','Emotional','Neglect','Online / e-safety','Peer-on-peer','Behaviour / risk','Other']
+
+function Safeguarding({profile}){
+  const [pupils,setPupils]=useState(null);const [q,setQ]=useState('');const [sel,setSel]=useState(null)
+  const [category,setCategory]=useState('');const [details,setDetails]=useState('');const [busy,setBusy]=useState(false)
+  const [d,setD]=useState(null);const [mode,setMode]=useState('report');const [toast,setToast]=useState('')
+  const [openId,setOpenId]=useState(null);const [drafts,setDrafts]=useState({})
+  const fire=m=>{setToast(m);setTimeout(()=>setToast(''),4200)}
+  async function load(){const {data}=await sb.functions.invoke('safeguarding',{body:{action:'list'}});setD(data||{})}
+  async function loadPupils(){const {data}=await sb.from('pupils').select('id,first_name,last_name,academic_year,is_active').order('last_name');setPupils((data||[]).filter(p=>p.is_active!==false))}
+  useEffect(()=>{load();loadPupils()},[])
+  async function submit(){if(!details.trim()){fire('Please describe the concern');return}
+    setBusy(true)
+    const {data,error}=await sb.functions.invoke('safeguarding',{body:{action:'report',about_pupil_id:sel?sel.id:null,category,details}})
+    setBusy(false);if(error||(data&&data.error)){fire((data&&data.error)||'Error');return}
+    fire('Concern logged — the DSL has been notified');setSel(null);setQ('');setCategory('');setDetails('');load()}
+  async function act(id,status){const dft=drafts[id]||{}
+    const {data,error}=await sb.functions.invoke('safeguarding',{body:{action:'action',id,status,dsl_notes:dft.notes||''}})
+    if(error||(data&&data.error)){fire((data&&data.error)||'Error');return}
+    fire('Updated');setOpenId(null);load()}
+  const list=(pupils||[]).filter(p=>(p.first_name+' '+p.last_name).toLowerCase().includes(q.toLowerCase())).slice(0,8)
+  const fmt=x=>new Date(x).toLocaleDateString('en-GB',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})
+  const stb=st=>st==='closed'?{bg:'#E5EEE7',fg:C.green,t:'Closed'}:st==='actioned'?{bg:'#FBECC9',fg:'#8A6D1B',t:'Actioned'}:{bg:C.urgentSoft,fg:C.urgent,t:'Open'}
+  const canView=d&&d.can_view
+  return html`<div>
+    <h2 class="serif" style=${{color:C.navy,marginTop:4}}>Safeguarding</h2>
+    <p class="muted" style=${{fontSize:12,marginTop:0}}>Report a concern to the Designated Safeguarding Lead. Concerns are confidential and seen only by the DSL and deputies.</p>
+    ${canView&&html`<div style=${{display:'flex',gap:8,marginBottom:12}}>${[['report','➕ Report'],['log','🔒 Concern log'+(d.concerns&&d.concerns.length?' ('+d.concerns.filter(c=>c.status==='open').length+' open)':'')]].map(([k,l])=>html`<button key=${k} class="chip ${mode===k?'on':''}" style=${{flex:1}} onClick=${()=>setMode(k)}>${l}</button>`)}</div>`}
+    ${(mode==='report'||!canView)&&html`<div>
+      <div class="card" style=${{padding:14,marginBottom:14}}>
+        <div class="lbl">About (pupil) <span class="muted" style=${{fontWeight:400}}>— optional</span></div>
+        ${sel?html`<div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginTop:4}}><b>${sel.first_name} ${sel.last_name}</b><button class="chip" onClick=${()=>setSel(null)}>Clear</button></div>`:html`<input class="in" placeholder="Search pupil (or leave blank for a general concern)" value=${q} onInput=${e=>setQ(e.target.value)}/>${q&&html`<div style=${{marginTop:6}}>${list.map(p=>html`<div key=${p.id} class="card" style=${{display:'flex',justifyContent:'space-between',padding:'7px 11px',marginBottom:5,cursor:'pointer'}} onClick=${()=>{setSel(p);setQ('')}}><b>${p.first_name} ${p.last_name}</b><span class="muted" style=${{fontSize:11}}>${p.academic_year||''}</span></div>`)}</div>`}`}
+        <div class="lbl" style=${{marginTop:10}}>Type <span class="muted" style=${{fontWeight:400}}>— optional</span></div>
+        <select class="in" value=${category} onChange=${e=>setCategory(e.target.value)}><option value="">- choose -</option>${SAFE_CATEGORIES.map(c=>html`<option key=${c} value=${c}>${c}</option>`)}</select>
+        <div class="lbl" style=${{marginTop:10}}>What is your concern?</div>
+        <textarea class="in" style=${{minHeight:90,resize:'vertical',fontFamily:'inherit'}} placeholder="Write exactly what you saw or heard, with dates/times. Stick to the facts." value=${details} onInput=${e=>setDetails(e.target.value)}></textarea>
+        <button class="btn" style=${{marginTop:12}} disabled=${busy||!details.trim()} onClick=${submit}>${busy?'Sending…':'Report to DSL'}</button>
+      </div>
+      ${!canView&&html`<div><h3 class="serif" style=${{color:C.navy,margin:'0 0 8px'}}>My reports</h3>
+        ${((d&&d.mine)||[]).length===0&&html`<div class="card muted" style=${{padding:14}}>You haven't reported any concerns.</div>`}
+        ${((d&&d.mine)||[]).map(c=>{const b=stb(c.status);return html`<div key=${c.id} class="card" style=${{padding:'9px 12px',marginBottom:6}}><div style=${{display:'flex',justifyContent:'space-between'}}><b>${c.pupil_name}</b><span class="tag" style=${{background:b.bg,color:b.fg,padding:'3px 9px'}}>${b.t}</span></div><div class="muted" style=${{fontSize:11,marginTop:3}}>${c.category||'Concern'} · ${fmt(c.created_at)}</div></div>`})}
+      </div>`}
+    </div>`}
+    ${mode==='log'&&canView&&html`<div>
+      ${(d.concerns||[]).length===0&&html`<div class="card muted" style=${{padding:16}}>No concerns logged.</div>`}
+      ${(d.concerns||[]).map(c=>{const b=stb(c.status);const isOpen=openId===c.id;const dft=drafts[c.id]||{};return html`<div key=${c.id} class="card" style=${{padding:'10px 12px',marginBottom:8}}>
+        <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',cursor:'pointer'}} onClick=${()=>setOpenId(isOpen?null:c.id)}><div><b>${c.pupil_name}</b> <span class="muted" style=${{fontSize:11}}>${c.academic_year||''}</span></div><span class="tag" style=${{background:b.bg,color:b.fg,padding:'3px 9px'}}>${b.t}</span></div>
+        <div class="muted" style=${{fontSize:11,marginTop:3}}>${c.category||'Concern'} · reported by ${c.reporter_name} · ${fmt(c.created_at)}</div>
+        ${isOpen&&html`<div style=${{marginTop:8,borderTop:'1px solid #EEEAE0',paddingTop:8}}>
+          <div style=${{fontSize:13,whiteSpace:'pre-wrap',background:'#FAF8F3',padding:'8px 10px',borderRadius:6}}>${c.details}</div>
+          <div class="lbl" style=${{marginTop:8}}>DSL action / notes</div>
+          <textarea class="in" style=${{minHeight:50,resize:'vertical',fontFamily:'inherit'}} placeholder="Record the action taken / referral…" value=${dft.notes!==undefined?dft.notes:(c.dsl_notes||'')} onInput=${e=>setDrafts(dd=>({...dd,[c.id]:{...(dd[c.id]||{}),notes:e.target.value}}))}></textarea>
+          <div style=${{display:'flex',gap:6,marginTop:8}}>${[['actioned','Mark actioned'],['closed','Close'],['open','Reopen']].map(([st,l])=>html`<button key=${st} class="chip" onClick=${()=>act(c.id,st)}>${l}</button>`)}</div>
+          ${c.actioned_by_name?html`<div class="muted" style=${{fontSize:10,marginTop:6}}>Last actioned by ${c.actioned_by_name}</div>`:''}
+        </div>`}
+      </div>`})}
+    </div>`}
+    ${toast&&html`<div style=${{position:'fixed',left:'50%',bottom:24,transform:'translateX(-50%)',background:'#0E1D38',color:'#fff',padding:'10px 16px',borderRadius:999,fontSize:14,maxWidth:'90%',textAlign:'center'}}>${toast}</div>`}
+  </div>`}
+
+function FireDrills({profile}){
+  const today=new Date().toISOString().slice(0,10)
+  const [date,setDate]=useState(today);const [period,setPeriod]=useState('');const [cond,setCond]=useState(profile.full_name||'')
+  const [evac,setEvac]=useState('');const [roll,setRoll]=useState(false);const [notes,setNotes]=useState('')
+  const [rows,setRows]=useState(null);const [busy,setBusy]=useState(false);const [toast,setToast]=useState('')
+  const fire=m=>{setToast(m);setTimeout(()=>setToast(''),3600)}
+  async function load(){const {data}=await sb.functions.invoke('fire-drill',{body:{action:'list'}});setRows((data&&data.rows)||[])}
+  useEffect(()=>{load()},[])
+  async function submit(){if(!period){fire('Choose morning or night');return}
+    setBusy(true)
+    const {data,error}=await sb.functions.invoke('fire-drill',{body:{action:'save',drill_date:date,period,conducted_by:cond,evacuation_time:evac,roll_call_complete:roll,notes}})
+    setBusy(false);if(error||(data&&data.error)){fire((data&&data.error)||'Error');return}
+    fire('Fire drill logged');setPeriod('');setEvac('');setRoll(false);setNotes('');load()}
+  async function exportCsv(){const {data,error}=await sb.functions.invoke('fire-drill',{body:{action:'export',month:date.slice(0,7)}})
+    if(error||(data&&data.error)){fire('Export failed');return}
+    const rs=(data&&data.rows)||[];if(!rs.length){fire('No drills this month');return}
+    const head=['Date','Drill','Conducted by','Evacuation time','Roll call complete','Notes']
+    const out=[head].concat(rs.map(r=>[r.drill_date,r.period||'',r.conducted_by||'',r.evacuation_time||'',r.roll_call_complete?'Yes':'No',r.notes||'']))
+    const csv=out.map(r=>r.map(x=>'"'+(x==null?'':x).toString().replace(/"/g,'""')+'"').join(',')).join(String.fromCharCode(10))
+    const u=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));const a=document.createElement('a');a.href=u;a.download='fire_drills_'+date.slice(0,7)+'.csv';a.click();URL.revokeObjectURL(u)}
+  const fmtD=x=>new Date(x+'T00:00:00').toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short',year:'numeric'})
+  return html`<div>
+    <h2 class="serif" style=${{color:C.navy,marginTop:4}}>Fire drills</h2>
+    <div class="card" style=${{padding:14,marginBottom:14}}>
+      <div class="lbl">Date</div><input class="in" type="date" value=${date} onInput=${e=>setDate(e.target.value)}/>
+      <div class="lbl" style=${{marginTop:10}}>Drill</div><div style=${{display:'flex',gap:8}}>${['Morning','Night'].map(p=>html`<button key=${p} class="chip ${period===p?'on':''}" style=${{flex:1}} onClick=${()=>setPeriod(p)}>${p}</button>`)}</div>
+      <div class="lbl" style=${{marginTop:10}}>Conducted by</div><input class="in" value=${cond} onInput=${e=>setCond(e.target.value)}/>
+      <div class="lbl" style=${{marginTop:10}}>Evacuation time</div><input class="in" placeholder="e.g. 2 min 40 sec" value=${evac} onInput=${e=>setEvac(e.target.value)}/>
+      <div class="lbl" style=${{marginTop:10}}>Roll call</div><button class="chip" style=${{background:roll?C.green:'',color:roll?'#fff':''}} onClick=${()=>setRoll(!roll)}>${roll?'✓ ':''}All pupils accounted for</button>
+      <div class="lbl" style=${{marginTop:10}}>Notes / issues</div><textarea class="in" style=${{minHeight:54,resize:'vertical',fontFamily:'inherit'}} value=${notes} onInput=${e=>setNotes(e.target.value)}></textarea>
+      <button class="btn" style=${{marginTop:12}} disabled=${busy||!period} onClick=${submit}>${busy?'Saving…':'Log fire drill'}</button>
+    </div>
+    <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}><h3 class="serif" style=${{color:C.navy,margin:0}}>Recent drills</h3><button class="chip" onClick=${exportCsv}>📄 Month CSV</button></div>
+    ${rows===null&&html`<div class="muted">Loading…</div>`}
+    ${rows&&rows.length===0&&html`<div class="card muted" style=${{padding:16}}>No fire drills logged yet.</div>`}
+    ${(rows||[]).map(r=>html`<div key=${r.id} class="card" style=${{padding:'10px 12px',marginBottom:6}}>
+      <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center'}}><b>${fmtD(r.drill_date)} · ${r.period||''}</b><span class="tag" style=${{background:r.roll_call_complete?'#E5EEE7':C.urgentSoft,color:r.roll_call_complete?C.green:C.urgent,padding:'3px 9px'}}>${r.roll_call_complete?'Roll call OK':'Roll call incomplete'}</span></div>
+      <div class="muted" style=${{fontSize:12,marginTop:3}}>${r.conducted_by||r.logged_by_name||''}${r.evacuation_time?' · '+r.evacuation_time:''}${r.notes?' · '+r.notes:''}</div>
+    </div>`)}
+    ${toast&&html`<div style=${{position:'fixed',left:'50%',bottom:24,transform:'translateX(-50%)',background:'#0E1D38',color:'#fff',padding:'10px 16px',borderRadius:999,fontSize:14,maxWidth:'90%',textAlign:'center'}}>${toast}</div>`}
+  </div>`}
+
+function Medical({profile}){
+  const [mode,setMode]=useState('medication');const [pupils,setPupils]=useState(null)
+  const [toast,setToast]=useState('');const fire=m=>{setToast(m);setTimeout(()=>setToast(''),3600)}
+  const [q,setQ]=useState('');const [sel,setSel]=useState(null);const [med,setMed]=useState('');const [dose,setDose]=useState('');const [reason,setReason]=useState('');const [pn,setPn]=useState(false);const [mnotes,setMnotes]=useState('');const [busy,setBusy]=useState(false);const [mrows,setMrows]=useState(null)
+  const today=new Date().toISOString().slice(0,10)
+  const [tdate,setTdate]=useState(today);const [slots,setSlots]=useState(null);const [openSlot,setOpenSlot]=useState(null);const [tq,setTq]=useState('');const [tsel,setTsel]=useState(null);const [treason,setTreason]=useState('');const [od,setOd]=useState({})
+  async function loadPupils(){const {data}=await sb.from('pupils').select('id,first_name,last_name,academic_year,is_active').order('last_name');setPupils((data||[]).filter(p=>p.is_active!==false))}
+  async function loadMed(){const {data}=await sb.functions.invoke('medical',{body:{action:'med_list'}});setMrows((data&&data.rows)||[])}
+  async function loadTriage(dt){setSlots(null);const {data}=await sb.functions.invoke('medical',{body:{action:'triage_load',date:dt||tdate}});setSlots((data&&data.slots)||[])}
+  useEffect(()=>{loadPupils();loadMed()},[])
+  useEffect(()=>{if(mode==='triage')loadTriage(tdate)},[mode,tdate])
+  const list=(pupils||[]).filter(p=>(p.first_name+' '+p.last_name).toLowerCase().includes(q.toLowerCase())).slice(0,8)
+  const tlist=(pupils||[]).filter(p=>(p.first_name+' '+p.last_name).toLowerCase().includes(tq.toLowerCase())).slice(0,8)
+  async function logMed(){if(!sel||!med.trim()){fire('Pick a pupil and medication');return}
+    setBusy(true)
+    const {data,error}=await sb.functions.invoke('medical',{body:{action:'med_log',pupil_id:sel.id,medication:med,dose,reason,parent_notified:pn,notes:mnotes}})
+    setBusy(false);if(error||(data&&data.error)){fire((data&&data.error)||'Error');return}
+    fire('Medication logged');setSel(null);setQ('');setMed('');setDose('');setReason('');setPn(false);setMnotes('');loadMed()}
+  async function book(slot){if(!tsel){fire('Pick a pupil');return}
+    const {data,error}=await sb.functions.invoke('medical',{body:{action:'triage_book',date:tdate,slot,pupil_id:tsel.id,reason:treason}})
+    if(error||(data&&data.error)){fire((data&&data.error)||'Error');return}
+    fire('Booked');setOpenSlot(null);setTsel(null);setTq('');setTreason('');loadTriage(tdate)}
+  async function updateOutcome(b){const dft=od[b.id]||{}
+    const {data,error}=await sb.functions.invoke('medical',{body:{action:'triage_update',id:b.id,taken_by:dft.taken_by!==undefined?dft.taken_by:(b.taken_by||''),outcome:dft.outcome!==undefined?dft.outcome:(b.outcome||''),parent_notified:dft.pn!==undefined?dft.pn:b.parent_notified,seen:dft.seen!==undefined?dft.seen:b.seen}})
+    if(error||(data&&data.error)){fire((data&&data.error)||'Error');return}
+    fire('Updated');loadTriage(tdate)}
+  async function clearSlot(b){const {data,error}=await sb.functions.invoke('medical',{body:{action:'triage_clear',id:b.id}});if(!(error||(data&&data.error))){fire('Removed');loadTriage(tdate)}}
+  const fmt=x=>new Date(x).toLocaleDateString('en-GB',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})
+  const slot12=s=>{const a=s.split(':');const hh=+a[0];return ((hh-1)%12+1)+':'+a[1]+(hh>=12?'pm':'am')}
+  return html`<div>
+    <h2 class="serif" style=${{color:C.navy,marginTop:4}}>Medical</h2>
+    <div style=${{display:'flex',gap:8,marginBottom:12}}>${[['medication','💊 Medication log'],['triage','🩺 Triage clinic']].map(([k,l])=>html`<button key=${k} class="chip ${mode===k?'on':''}" style=${{flex:1}} onClick=${()=>setMode(k)}>${l}</button>`)}</div>
+    ${mode==='medication'&&html`<div>
+      <div class="card" style=${{padding:14,marginBottom:14}}>
+        <div class="lbl">Pupil</div>
+        ${sel?html`<div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginTop:4}}><b>${sel.first_name} ${sel.last_name}</b><button class="chip" onClick=${()=>setSel(null)}>Change</button></div>`:html`<input class="in" placeholder="Search pupil…" value=${q} onInput=${e=>setQ(e.target.value)}/>${q&&html`<div style=${{marginTop:6}}>${list.map(p=>html`<div key=${p.id} class="card" style=${{display:'flex',justifyContent:'space-between',padding:'7px 11px',marginBottom:5,cursor:'pointer'}} onClick=${()=>{setSel(p);setQ('')}}><b>${p.first_name} ${p.last_name}</b><span class="muted" style=${{fontSize:11}}>${p.academic_year||''}</span></div>`)}</div>`}`}
+        <div style=${{display:'flex',gap:10,marginTop:10}}><div style=${{flex:1}}><div class="lbl">Medication</div><input class="in" placeholder="e.g. Paracetamol" value=${med} onInput=${e=>setMed(e.target.value)}/></div><div style=${{flex:1}}><div class="lbl">Dose</div><input class="in" placeholder="e.g. 500mg" value=${dose} onInput=${e=>setDose(e.target.value)}/></div></div>
+        <div class="lbl" style=${{marginTop:10}}>Reason</div><input class="in" placeholder="e.g. headache" value=${reason} onInput=${e=>setReason(e.target.value)}/>
+        <div class="lbl" style=${{marginTop:10}}>Notes</div><textarea class="in" style=${{minHeight:44,resize:'vertical',fontFamily:'inherit'}} value=${mnotes} onInput=${e=>setMnotes(e.target.value)}></textarea>
+        <button class="chip" style=${{marginTop:10,background:pn?C.green:'',color:pn?'#fff':''}} onClick=${()=>setPn(!pn)}>${pn?'✓ ':''}Parent notified</button>
+        <button class="btn" style=${{marginTop:12}} disabled=${busy||!sel||!med.trim()} onClick=${logMed}>${busy?'Saving…':'Log medication'}</button>
+      </div>
+      <h3 class="serif" style=${{color:C.navy,margin:'0 0 8px'}}>Recent</h3>
+      ${(mrows||[]).length===0&&html`<div class="card muted" style=${{padding:14}}>No medication logged yet.</div>`}
+      ${(mrows||[]).map(r=>html`<div key=${r.id} class="card" style=${{padding:'9px 12px',marginBottom:6}}><div style=${{display:'flex',justifyContent:'space-between'}}><b>${r.pupil_name}</b><span class="muted" style=${{fontSize:11}}>${fmt(r.administered_at)}</span></div><div style=${{fontSize:13,marginTop:2}}>${r.medication}${r.dose?' · '+r.dose:''}${r.reason?' · '+r.reason:''}</div><div class="muted" style=${{fontSize:11,marginTop:2}}>by ${r.given_by||''}${r.parent_notified?' · parent notified':''}</div></div>`)}
+    </div>`}
+    ${mode==='triage'&&html`<div>
+      <p class="muted" style=${{fontSize:12,marginTop:0}}>Non-emergency clinic with Maulana Luqman, 5:30–6:30pm. Book a pupil into a slot with the reason; record the outcome after.</p>
+      <input class="in" type="date" style=${{maxWidth:190}} value=${tdate} onInput=${e=>setTdate(e.target.value)}/>
+      ${slots===null&&html`<div class="muted" style=${{marginTop:10}}>Loading…</div>`}
+      ${(slots||[]).map(sl=>{const b=sl.booking;const isOpen=openSlot===sl.slot;const dft=(b&&od[b.id])||{}
+        return html`<div key=${sl.slot} class="card" style=${{padding:'10px 12px',marginTop:8}}>
+          <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+            <b>${slot12(sl.slot)}</b>
+            ${b?html`<span class="tag" style=${{background:b.seen?'#E5EEE7':'#FBECC9',color:b.seen?C.green:'#8A6D1B',padding:'3px 9px'}}>${b.seen?'Seen':'Booked'}</span>`:html`<button class="chip" onClick=${()=>{setOpenSlot(isOpen?null:sl.slot);setTsel(null);setTq('');setTreason('')}}>${isOpen?'Cancel':'Book'}</button>`}
+          </div>
+          ${b&&html`<div style=${{marginTop:4}}><b>${b.pupil_name}</b> <span class="muted" style=${{fontSize:11}}>${b.academic_year||''}</span>${b.reason?html`<div style=${{fontSize:12,marginTop:2}}>${b.reason}</div>`:''}
+            <div class="lbl" style=${{marginTop:8}}>Who took them</div><input class="in" value=${dft.taken_by!==undefined?dft.taken_by:(b.taken_by||'')} onInput=${e=>setOd(o=>({...o,[b.id]:{...(o[b.id]||{}),taken_by:e.target.value}}))}/>
+            <div class="lbl" style=${{marginTop:8}}>Update / outcome</div><textarea class="in" style=${{minHeight:44,resize:'vertical',fontFamily:'inherit'}} value=${dft.outcome!==undefined?dft.outcome:(b.outcome||'')} onInput=${e=>setOd(o=>({...o,[b.id]:{...(o[b.id]||{}),outcome:e.target.value}}))}></textarea>
+            <div style=${{display:'flex',gap:6,marginTop:8,flexWrap:'wrap'}}>
+              <button class="chip" style=${{background:(dft.pn!==undefined?dft.pn:b.parent_notified)?C.green:'',color:(dft.pn!==undefined?dft.pn:b.parent_notified)?'#fff':''}} onClick=${()=>setOd(o=>({...o,[b.id]:{...(o[b.id]||{}),pn:!(dft.pn!==undefined?dft.pn:b.parent_notified)}}))}>${(dft.pn!==undefined?dft.pn:b.parent_notified)?'✓ ':''}Parent notified</button>
+              <button class="chip" style=${{background:(dft.seen!==undefined?dft.seen:b.seen)?C.green:'',color:(dft.seen!==undefined?dft.seen:b.seen)?'#fff':''}} onClick=${()=>setOd(o=>({...o,[b.id]:{...(o[b.id]||{}),seen:!(dft.seen!==undefined?dft.seen:b.seen)}}))}>${(dft.seen!==undefined?dft.seen:b.seen)?'✓ ':''}Seen</button>
+              <button class="btn" style=${{flex:1,minWidth:90}} onClick=${()=>updateOutcome(b)}>Save</button>
+              <button class="chip" onClick=${()=>clearSlot(b)}>Remove</button>
+            </div>
+          </div>`}
+          ${isOpen&&!b&&html`<div style=${{marginTop:8}}>
+            ${tsel?html`<div style=${{display:'flex',justifyContent:'space-between',alignItems:'center'}}><b>${tsel.first_name} ${tsel.last_name}</b><button class="chip" onClick=${()=>setTsel(null)}>Change</button></div>`:html`<input class="in" placeholder="Search pupil…" value=${tq} onInput=${e=>setTq(e.target.value)}/>${tq&&html`<div style=${{marginTop:6}}>${tlist.map(p=>html`<div key=${p.id} class="card" style=${{display:'flex',justifyContent:'space-between',padding:'7px 11px',marginBottom:5,cursor:'pointer'}} onClick=${()=>{setTsel(p);setTq('')}}><b>${p.first_name} ${p.last_name}</b><span class="muted" style=${{fontSize:11}}>${p.academic_year||''}</span></div>`)}</div>`}`}
+            <div class="lbl" style=${{marginTop:8}}>Reason (what it's for)</div><textarea class="in" style=${{minHeight:44,resize:'vertical',fontFamily:'inherit'}} value=${treason} onInput=${e=>setTreason(e.target.value)}></textarea>
+            <button class="btn" style=${{marginTop:8}} disabled=${!tsel} onClick=${()=>book(sl.slot)}>Book into ${slot12(sl.slot)}</button>
+          </div>`}
+        </div>`})}
+    </div>`}
+    ${toast&&html`<div style=${{position:'fixed',left:'50%',bottom:24,transform:'translateX(-50%)',background:'#0E1D38',color:'#fff',padding:'10px 16px',borderRadius:999,fontSize:14,maxWidth:'90%',textAlign:'center'}}>${toast}</div>`}
+  </div>`}
+
 function Dashboard({profile,onSignOut}){
   const [pupils,setPupils]=useState(null);const [classes,setClasses]=useState([]);const [groups,setGroups]=useState([])
   const [anns,setAnns]=useState([]);const [tab,setTab]=useState('overview');const [q,setQ]=useState('');const [toast,setToast]=useState('')
-  const [editPupil,setEditPupil]=useState(null);const canManage=profile.role==='admin';const canIncident=canReportIncident(profile);const canBoarding=canBoardingCheck(profile);const canSup=canSupervisor(profile)
+  const [editPupil,setEditPupil]=useState(null);const canManage=profile.role==='admin';const canIncident=canReportIncident(profile);const canBoarding=canBoardingCheck(profile);const canSup=canSupervisor(profile);const canMedFire=canBoardTeam(profile)
   const fire=m=>{setToast(m);setTimeout(()=>setToast(''),3200)}
   async function load(){const [p,c,g,a]=await Promise.all([
     sb.from('pupils').select('*').order('last_name'),
@@ -748,8 +928,8 @@ function Dashboard({profile,onSignOut}){
         <div style=${{color:'#AEBAD0',fontSize:10}}>Al Jamiatul Islamiyah</div></div></div>
       <button onClick=${onSignOut} style=${{background:'transparent',border:'1px solid rgba(255,255,255,.3)',color:'#fff',borderRadius:10,padding:'6px 10px',fontSize:12,cursor:'pointer'}}>Sign out</button></div>
     <div style=${{height:3,background:`linear-gradient(90deg,${C.gold},${C.goldSoft})`}}></div>
-    <div style=${{padding:'8px 16px 0',display:'flex',gap:8,flexWrap:'wrap'}}>${['overview','pupils','attendance','league',...(canManage?['engagement']:[]),'praise','detentions','behaviour',...(canIncident?['incidents']:[]),...(canBoarding?['boarding']:[]),...(canSup?['supervisor']:[]),'announce','inbox'].map(t=>html`
-      <button key=${t} onClick=${()=>setTab(t)} class="chip ${tab===t?'on':''}">${t==='overview'?'Overview':t==='pupils'?'Pupils':t==='attendance'?'Attendance':t==='league'?'League':t==='engagement'?'Engagement':t==='praise'?'Praise':t==='detentions'?'Detentions':t==='behaviour'?'Behaviour':t==='incidents'?'Injuries':t==='boarding'?'Boarding':t==='supervisor'?'Supervisor':t==='announce'?'Announce':'Inbox'}</button>`)}</div>
+    <div style=${{padding:'8px 16px 0',display:'flex',gap:8,flexWrap:'wrap'}}>${['overview','pupils','attendance','league',...(canManage?['engagement']:[]),'praise','detentions','behaviour','safeguarding',...(canMedFire?['medical','firedrills']:[]),...(canIncident?['incidents']:[]),...(canBoarding?['boarding']:[]),...(canSup?['supervisor']:[]),'announce','inbox'].map(t=>html`
+      <button key=${t} onClick=${()=>setTab(t)} class="chip ${tab===t?'on':''}">${t==='overview'?'Overview':t==='pupils'?'Pupils':t==='attendance'?'Attendance':t==='league'?'League':t==='engagement'?'Engagement':t==='praise'?'Praise':t==='detentions'?'Detentions':t==='behaviour'?'Behaviour':t==='safeguarding'?'Safeguarding':t==='medical'?'Medical':t==='firedrills'?'Fire drills':t==='incidents'?'Injuries':t==='boarding'?'Boarding':t==='supervisor'?'Supervisor':t==='announce'?'Announce':'Inbox'}</button>`)}</div>
     <div style=${{padding:16}}>
       ${pupils===null&&html`<div class="muted">Loading live data…</div>`}
       ${tab==='overview'&&pupils&&html`<div>
@@ -784,6 +964,9 @@ function Dashboard({profile,onSignOut}){
       ${tab==='praise'&&html`<${Praise} profile=${profile} canManage=${canManage}/>`}
       ${tab==='detentions'&&html`<${Detentions} profile=${profile}/>`}
       ${tab==='behaviour'&&html`<${Behaviour} profile=${profile}/>`}
+      ${tab==='safeguarding'&&html`<${Safeguarding} profile=${profile}/>`}
+      ${tab==='medical'&&canMedFire&&html`<${Medical} profile=${profile}/>`}
+      ${tab==='firedrills'&&canMedFire&&html`<${FireDrills} profile=${profile}/>`}
       ${tab==='incidents'&&canIncident&&html`<${Incidents} profile=${profile}/>`}
       ${tab==='boarding'&&canBoarding&&html`<${Boarding} profile=${profile}/>`}
       ${tab==='supervisor'&&canSup&&html`<${Supervisor} profile=${profile}/>`}
