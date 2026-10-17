@@ -461,10 +461,78 @@ function Incidents({profile}){
     ${toast&&html`<div style=${{position:'fixed',left:'50%',bottom:24,transform:'translateX(-50%)',background:'#0E1D38',color:'#fff',padding:'10px 16px',borderRadius:999,fontSize:14,maxWidth:'90%',textAlign:'center'}}>${toast}</div>`}
   </div>`}
 
+const BOARDING_STAFF={names:['ihsaanul haque','gulfam khan'],emails:['ihsaanul.haque@boltondarululoom.org.uk','gulfam.khan@boltondarululoom.org.uk']}
+function canBoardingCheck(p){if(!p)return false;if(p.role==='admin')return true;const nm=(p.full_name||'').trim().toLowerCase(),em=(p.email||'').toLowerCase();return BOARDING_STAFF.names.includes(nm)||BOARDING_STAFF.emails.includes(em)}
+const BOARD_ITEMS=[['bed_ok','Beds'],['cupboard_ok','Cupboards'],['floor_ok','Floor'],['window_ok','Windows'],['restrictor_ok','Window restrictors']]
+
+function Boarding({profile}){
+  const today=new Date().toISOString().slice(0,10)
+  const [date,setDate]=useState(today)
+  const [rooms,setRooms]=useState(null);const [checks,setChecks]=useState({});const [flags,setFlags]=useState([]);const [canResolve,setCanResolve]=useState(false)
+  const [open,setOpen]=useState(null);const [draft,setDraft]=useState({});const [busy,setBusy]=useState(false);const [toast,setToast]=useState('')
+  const fire=m=>{setToast(m);setTimeout(()=>setToast(''),3600)}
+  async function load(d){setRooms(null);const {data,error}=await sb.functions.invoke('boarding-check',{body:{action:'load',date:d||date}});if(error||(data&&data.error)){fire((data&&data.error)||'Error loading');setRooms([]);return}setRooms(data.rooms||[]);setChecks(data.checks||{});setFlags(data.flags||[]);setCanResolve(!!data.can_resolve)}
+  useEffect(()=>{load(date)},[date])
+  function statusOf(id){const c=checks[id];if(!c)return 'none';const vals=[c.bed_ok,c.cupboard_ok,c.floor_ok,c.window_ok,c.restrictor_ok];return vals.some(v=>v===false)?'issue':'ok'}
+  function expand(r){const c=checks[r.id];setDraft(c?{bed_ok:c.bed_ok!==false,cupboard_ok:c.cupboard_ok!==false,floor_ok:c.floor_ok!==false,window_ok:c.window_ok!==false,restrictor_ok:c.restrictor_ok!==false,notes:c.notes||''}:{bed_ok:true,cupboard_ok:true,floor_ok:true,window_ok:true,restrictor_ok:true,notes:''});setOpen(r.id)}
+  async function save(roomId,payload){setBusy(true);const {data,error}=await sb.functions.invoke('boarding-check',{body:{action:'save',room_id:roomId,date,...payload}});setBusy(false);if(error||(data&&data.error)){fire((data&&data.error)||'Error saving');return}fire(data.flagged?'Saved · flagged to Maulana Gulfam':'Saved');setOpen(null);load(date)}
+  function allGood(roomId){save(roomId,{bed_ok:true,cupboard_ok:true,floor_ok:true,window_ok:true,restrictor_ok:true,notes:''})}
+  async function resolve(f){const {data,error}=await sb.functions.invoke('boarding-check',{body:{action:'resolve',room_id:f.room_id,date:f.check_date}});if(error||(data&&data.error)){fire((data&&data.error)||'Error');return}fire('Marked resolved');load(date)}
+  async function exportCsv(){const {data,error}=await sb.functions.invoke('boarding-check',{body:{action:'export',month:date.slice(0,7)}});if(error||(data&&data.error)){fire('Export failed');return}
+    const rows=(data&&data.rows)||[];if(!rows.length){fire('No checks this month yet');return}
+    const yn=v=>v===true?'OK':v===false?'ISSUE':''
+    const head=['Date','Room','Beds','Cupboards','Floor','Windows','Window restrictors','Restrictor resolved','Checked by','Notes']
+    const out=[head].concat(rows.map(r=>[r.check_date,r.room_name,yn(r.bed_ok),yn(r.cupboard_ok),yn(r.floor_ok),yn(r.window_ok),yn(r.restrictor_ok),r.restrictor_ok===false?(r.flag_resolved?'Yes':'No'):'',r.checked_by_name||'',r.notes||'']))
+    const csv=out.map(r=>r.map(x=>'"'+(x==null?'':x).toString().replace(/"/g,'""')+'"').join(',')).join(String.fromCharCode(10))
+    const u=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));const a=document.createElement('a');a.href=u;a.download='boarding_checks_'+date.slice(0,7)+'.csv';a.click();URL.revokeObjectURL(u)}
+  const fmtD=d=>new Date(d+'T00:00:00').toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'})
+  const doneCount=rooms?rooms.filter(r=>checks[r.id]).length:0
+  return html`<div>
+    <h2 class="serif" style=${{color:C.navy,marginTop:4}}>Boarding room checks</h2>
+    <p class="muted" style=${{fontSize:12,marginTop:0}}>Daily check of each room — beds, cupboards, floor, windows and window restrictors. A missing restrictor is flagged to Maulana Gulfam straight away.</p>
+    <div style=${{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap',marginBottom:10}}>
+      <input class="in" type="date" style=${{marginTop:0,width:'auto'}} value=${date} onInput=${e=>setDate(e.target.value)}/>
+      <button class="chip" onClick=${exportCsv}>📄 Month CSV</button>
+      ${rooms&&html`<span class="muted" style=${{fontSize:12,marginLeft:'auto'}}>${doneCount}/${rooms.length} rooms checked</span>`}
+    </div>
+    ${canResolve&&flags.length>0&&html`<div class="card" style=${{padding:'10px 12px',marginBottom:12,background:C.urgentSoft,border:'1px solid '+C.urgent}}>
+      <div style=${{fontWeight:700,color:C.urgent,marginBottom:6}}>⚠ Window restrictors to action (${flags.length})</div>
+      ${flags.map(f=>html`<div key=${f.room_id+f.check_date} style=${{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'6px 0',borderTop:'1px solid #F2C9C4'}}>
+        <div><b>${f.room_name}</b> <span class="muted" style=${{fontSize:11}}>${fmtD(f.check_date)} · ${f.checked_by_name}</span>${f.notes?html`<div style=${{fontSize:12}}>${f.notes}</div>`:''}</div>
+        <button class="chip" onClick=${()=>resolve(f)}>Mark done</button>
+      </div>`)}
+    </div>`}
+    ${rooms===null&&html`<div class="muted">Loading…</div>`}
+    ${(rooms||[]).map(r=>{const st=statusOf(r.id);const sc=st==='ok'?{bg:'#E5EEE7',fg:C.green,t:'✓ Checked'}:st==='issue'?{bg:C.urgentSoft,fg:C.urgent,t:'⚠ Issue'}:{bg:'#F3EFE6',fg:C.muted,t:'Not checked'}
+      const isOpen=open===r.id
+      return html`<div key=${r.id} class="card" style=${{padding:0,marginBottom:8,overflow:'hidden'}}>
+        <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'10px 12px',cursor:'pointer'}} onClick=${()=>isOpen?setOpen(null):expand(r)}>
+          <b>${r.name}</b>
+          <div style=${{display:'flex',gap:8,alignItems:'center'}}>
+            <span class="tag" style=${{background:sc.bg,color:sc.fg,padding:'4px 10px'}}>${sc.t}</span>
+            ${st==='none'&&html`<button class="chip" onClick=${e=>{e.stopPropagation();allGood(r.id)}}>✓ All good</button>`}
+          </div>
+        </div>
+        ${isOpen&&html`<div style=${{padding:'4px 12px 12px',borderTop:'1px solid #EEEAE0'}}>
+          ${BOARD_ITEMS.map(([k,lbl])=>html`<div key=${k} style=${{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'7px 0'}}>
+            <span style=${{fontWeight:k==='restrictor_ok'?700:400}}>${lbl}</span>
+            <div style=${{display:'flex',gap:6}}>
+              <button class="chip" style=${{background:draft[k]===true?C.green:'',color:draft[k]===true?'#fff':''}} onClick=${()=>setDraft(d=>({...d,[k]:true}))}>OK</button>
+              <button class="chip" style=${{background:draft[k]===false?C.urgent:'',color:draft[k]===false?'#fff':''}} onClick=${()=>setDraft(d=>({...d,[k]:false}))}>Issue</button>
+            </div>
+          </div>`)}
+          ${draft.restrictor_ok===false&&html`<div style=${{fontSize:11,color:C.urgent,margin:'2px 0 6px'}}>This will be flagged to Maulana Gulfam immediately on save.</div>`}
+          <textarea class="in" style=${{minHeight:48,resize:'vertical',fontFamily:'inherit'}} placeholder="Notes (optional)…" value=${draft.notes||''} onInput=${e=>setDraft(d=>({...d,notes:e.target.value}))}></textarea>
+          <button class="btn" style=${{marginTop:8}} disabled=${busy} onClick=${()=>save(r.id,draft)}>${busy?'Saving…':'Save check'}</button>
+        </div>`}
+      </div>`})}
+    ${toast&&html`<div style=${{position:'fixed',left:'50%',bottom:24,transform:'translateX(-50%)',background:'#0E1D38',color:'#fff',padding:'10px 16px',borderRadius:999,fontSize:14,maxWidth:'90%',textAlign:'center'}}>${toast}</div>`}
+  </div>`}
+
 function Dashboard({profile,onSignOut}){
   const [pupils,setPupils]=useState(null);const [classes,setClasses]=useState([]);const [groups,setGroups]=useState([])
   const [anns,setAnns]=useState([]);const [tab,setTab]=useState('overview');const [q,setQ]=useState('');const [toast,setToast]=useState('')
-  const [editPupil,setEditPupil]=useState(null);const canManage=profile.role==='admin';const canIncident=canReportIncident(profile)
+  const [editPupil,setEditPupil]=useState(null);const canManage=profile.role==='admin';const canIncident=canReportIncident(profile);const canBoarding=canBoardingCheck(profile)
   const fire=m=>{setToast(m);setTimeout(()=>setToast(''),3200)}
   async function load(){const [p,c,g,a]=await Promise.all([
     sb.from('pupils').select('*').order('last_name'),
@@ -487,8 +555,8 @@ function Dashboard({profile,onSignOut}){
         <div style=${{color:'#AEBAD0',fontSize:10}}>Al Jamiatul Islamiyah</div></div></div>
       <button onClick=${onSignOut} style=${{background:'transparent',border:'1px solid rgba(255,255,255,.3)',color:'#fff',borderRadius:10,padding:'6px 10px',fontSize:12,cursor:'pointer'}}>Sign out</button></div>
     <div style=${{height:3,background:`linear-gradient(90deg,${C.gold},${C.goldSoft})`}}></div>
-    <div style=${{padding:'8px 16px 0',display:'flex',gap:8,flexWrap:'wrap'}}>${['overview','pupils','attendance','league',...(canManage?['engagement']:[]),'praise','detentions',...(canIncident?['incidents']:[]),'announce','inbox'].map(t=>html`
-      <button key=${t} onClick=${()=>setTab(t)} class="chip ${tab===t?'on':''}">${t==='overview'?'Overview':t==='pupils'?'Pupils':t==='attendance'?'Attendance':t==='league'?'League':t==='engagement'?'Engagement':t==='praise'?'Praise':t==='detentions'?'Detentions':t==='incidents'?'Injuries':t==='announce'?'Announce':'Inbox'}</button>`)}</div>
+    <div style=${{padding:'8px 16px 0',display:'flex',gap:8,flexWrap:'wrap'}}>${['overview','pupils','attendance','league',...(canManage?['engagement']:[]),'praise','detentions',...(canIncident?['incidents']:[]),...(canBoarding?['boarding']:[]),'announce','inbox'].map(t=>html`
+      <button key=${t} onClick=${()=>setTab(t)} class="chip ${tab===t?'on':''}">${t==='overview'?'Overview':t==='pupils'?'Pupils':t==='attendance'?'Attendance':t==='league'?'League':t==='engagement'?'Engagement':t==='praise'?'Praise':t==='detentions'?'Detentions':t==='incidents'?'Injuries':t==='boarding'?'Boarding':t==='announce'?'Announce':'Inbox'}</button>`)}</div>
     <div style=${{padding:16}}>
       ${pupils===null&&html`<div class="muted">Loading live data…</div>`}
       ${tab==='overview'&&pupils&&html`<div>
@@ -523,6 +591,7 @@ function Dashboard({profile,onSignOut}){
       ${tab==='praise'&&html`<${Praise} profile=${profile} canManage=${canManage}/>`}
       ${tab==='detentions'&&html`<${Detentions} profile=${profile}/>`}
       ${tab==='incidents'&&canIncident&&html`<${Incidents} profile=${profile}/>`}
+      ${tab==='boarding'&&canBoarding&&html`<${Boarding} profile=${profile}/>`}
       ${editPupil&&html`<${PupilEditor} pupil=${editPupil} classes=${classes} onClose=${()=>setEditPupil(null)} onSaved=${m=>{setEditPupil(null);fire(m);load()}}/>`}
     </div>
     ${toast&&html`<div style=${{position:'fixed',left:'50%',bottom:24,transform:'translateX(-50%)',background:'#0E1D38',color:'#fff',padding:'10px 16px',borderRadius:999,fontSize:14,maxWidth:'90%',textAlign:'center'}}>${toast}</div>`}
