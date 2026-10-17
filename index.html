@@ -306,29 +306,41 @@ function PraiseCollation(){
   useEffect(()=>{load()},[])
   if(err)return html`<div class="card muted" style=${{padding:16}}>Couldn't load collation: ${err}</div>`
   if(!d)return html`<div class="muted">Loading results…</div>`
-  if(!d.periods.length)return html`<div class="card muted" style=${{padding:16}}>No finalised months yet. Results appear here once a month is collated.</div>`
+  if(!d.periods.length)return html`<div class="card muted" style=${{padding:16}}>No results yet. Praise results and behaviour codes appear here by month.</div>`
   const mlbl=p=>{const[y,m]=p.split('-');return new Date(+y,+m-1,1).toLocaleDateString('en-GB',{month:'short',year:'numeric'})}
-  const s=d.summary
+  const s=d.summary;const hasRows=d.rows&&d.rows.length>0
   const medal=a=>a==='Gold'?{bg:'#EFE4C4',fg:'#6B5212',t:'🥇 Gold'}:a==='Silver'?{bg:'#E9ECEF',fg:'#565C64',t:'🥈 Silver'}:a==='Bronze'?{bg:'#F0E0CE',fg:'#6E4517',t:'🥉 Bronze'}:{bg:'#F4F3EE',fg:C.muted,t:'—'}
-  const delta=s.prev_avg!=null?(s.avg_pct-s.prev_avg):null
+  const delta=(s&&s.prev_avg!=null)?(s.avg_pct-s.prev_avg):null
   return html`<div>
     <h2 class="serif" style=${{color:C.navy,marginTop:4}}>Praise points — collation</h2>
     <div style=${{display:'flex',gap:6,flexWrap:'wrap',margin:'8px 0 12px'}}>${d.periods.map(p=>html`<button key=${p} class="chip ${period===p?'on':''}" onClick=${()=>{setPeriod(p);load(p)}}>${mlbl(p)}</button>`)}</div>
-    <div style=${{display:'flex',gap:8,flexWrap:'wrap',marginBottom:10}}>
-      <div class="card" style=${{flex:'1 1 110px',padding:'10px 12px',background:C.navy,color:'#fff',border:'none'}}><div style=${{fontSize:10,color:'#AEBAD0'}}>Class average</div><div class="serif" style=${{fontSize:22,fontWeight:700}}>${s.avg_pct}%</div>${delta!=null?html`<div style=${{fontSize:10,color:delta>=0?'#9BE3B4':'#F3B0A8'}}>${delta>=0?'▲':'▼'} ${Math.abs(delta).toFixed(1)} vs ${mlbl(s.prev_period)}</div>`:''}</div>
-      <div class="card" style=${{flex:'1 1 70px',padding:'10px 12px',textAlign:'center'}}><div style=${{fontSize:20}}>🥇</div><div class="serif" style=${{fontSize:18,fontWeight:700,color:C.navy}}>${s.gold}</div><div class="muted" style=${{fontSize:10}}>Gold</div></div>
-      <div class="card" style=${{flex:'1 1 70px',padding:'10px 12px',textAlign:'center'}}><div style=${{fontSize:20}}>🥈</div><div class="serif" style=${{fontSize:18,fontWeight:700,color:C.navy}}>${s.silver}</div><div class="muted" style=${{fontSize:10}}>Silver</div></div>
-      <div class="card" style=${{flex:'1 1 70px',padding:'10px 12px',textAlign:'center'}}><div style=${{fontSize:20}}>🥉</div><div class="serif" style=${{fontSize:18,fontWeight:700,color:C.navy}}>${s.bronze}</div><div class="muted" style=${{fontSize:10}}>Bronze</div></div>
-    </div>
-    <div class="muted" style=${{fontSize:11,marginBottom:8}}>${s.awarded} of ${s.total} pupils earned a certificate this month. Gold 95–100% · Silver 90–94% · Bronze 85–89%.</div>
-    <div class="lbl" style=${{marginBottom:4}}>By class (average %)</div>
-    <div style=${{display:'flex',gap:6,flexWrap:'wrap',marginBottom:12}}>${s.groups.map(g=>html`<span key=${g.group} class="chip">${g.group} <b style=${{color:C.gold}}>${g.avg}%</b></span>`)}</div>
-    <div class="lbl" style=${{marginBottom:6}}>Full results</div>
-    ${d.rows.map(r=>{const m=medal(r.award);return html`<div key=${r.id} class="card" style=${{display:'flex',alignItems:'center',gap:8,padding:'7px 11px',marginBottom:5}}>
-      <span style=${{fontSize:11,fontWeight:700,color:C.muted,minWidth:22}}>${r.rank||''}</span>
-      <div style=${{flex:1,minWidth:0}}><b style=${{fontSize:13}}>${r.student_name}</b><div class="muted" style=${{fontSize:10}}>${r.group_name}${r.year?' · Yr '+r.year:''}${r.deductions<0?' · '+r.deductions+' sanction':''}</div></div>
-      <b style=${{fontSize:14,color:C.navy,minWidth:46,textAlign:'right'}}>${(+r.pct).toFixed(1)}%</b>
-      <span class="tag" style=${{background:m.bg,color:m.fg,padding:'3px 8px',fontSize:10,fontWeight:700,minWidth:62,textAlign:'center'}}>${m.t}</span></div>`})}
+    ${hasRows?html`<div>
+      <div style=${{display:'flex',gap:8,flexWrap:'wrap',marginBottom:10}}>
+        <div class="card" style=${{flex:'1 1 110px',padding:'10px 12px',background:C.navy,color:'#fff',border:'none'}}><div style=${{fontSize:10,color:'#AEBAD0'}}>Class average</div><div class="serif" style=${{fontSize:22,fontWeight:700}}>${s.avg_pct}%</div>${delta!=null?html`<div style=${{fontSize:10,color:delta>=0?'#9BE3B4':'#F3B0A8'}}>${delta>=0?'▲':'▼'} ${Math.abs(delta).toFixed(1)} vs ${mlbl(s.prev_period)}</div>`:''}</div>
+        <div class="card" style=${{flex:'1 1 70px',padding:'10px 12px',textAlign:'center'}}><div style=${{fontSize:20}}>🥇</div><div class="serif" style=${{fontSize:18,fontWeight:700,color:C.navy}}>${s.gold}</div><div class="muted" style=${{fontSize:10}}>Gold</div></div>
+        <div class="card" style=${{flex:'1 1 70px',padding:'10px 12px',textAlign:'center'}}><div style=${{fontSize:20}}>🥈</div><div class="serif" style=${{fontSize:18,fontWeight:700,color:C.navy}}>${s.silver}</div><div class="muted" style=${{fontSize:10}}>Silver</div></div>
+        <div class="card" style=${{flex:'1 1 70px',padding:'10px 12px',textAlign:'center'}}><div style=${{fontSize:20}}>🥉</div><div class="serif" style=${{fontSize:18,fontWeight:700,color:C.navy}}>${s.bronze}</div><div class="muted" style=${{fontSize:10}}>Bronze</div></div>
+      </div>
+      <div class="muted" style=${{fontSize:11,marginBottom:8}}>${s.awarded} of ${s.total} pupils earned a certificate this month. Gold 95–100% · Silver 90–94% · Bronze 85–89%.</div>
+      <div class="lbl" style=${{marginBottom:4}}>By class (average %)</div>
+      <div style=${{display:'flex',gap:6,flexWrap:'wrap',marginBottom:12}}>${s.groups.map(g=>html`<span key=${g.group} class="chip">${g.group} <b style=${{color:C.gold}}>${g.avg}%</b></span>`)}</div>
+    </div>`:html`<div class="card muted" style=${{padding:14,marginBottom:12}}>No praise points collated for ${mlbl(period)} yet — behaviour deductions for the month are shown below.</div>`}
+    ${d.behaviour&&d.behaviour.length>0&&html`<div class="card" style=${{padding:'10px 12px',marginBottom:12,background:'#FCF3F0',border:'1px solid #F2C9C4'}}>
+      <div style=${{fontWeight:700,color:C.urgent,marginBottom:6}}>Behaviour deductions this month — total −${d.behaviour_total} pts</div>
+      ${d.behaviour.map(bx=>html`<div key=${bx.pupil_name} style=${{display:'flex',justifyContent:'space-between',alignItems:'center',fontSize:12,padding:'3px 0'}}>
+        <span><b>${bx.pupil_name}</b> <span class="muted">${bx.year?'Yr '+bx.year:''}</span> · ${bx.codes}</span>
+        <b style=${{color:C.urgent}}>${bx.points>0?'−'+bx.points:'—'}</b>
+      </div>`)}
+      <div class="muted" style=${{fontSize:10,marginTop:6}}>C-code deductions (C2 −2, C3 −5, C4 −10). C5 is policy action. These reduce each pupil's net total below.</div>
+    </div>`}
+    ${hasRows?html`<div>
+      <div class="lbl" style=${{marginBottom:6}}>Full results</div>
+      ${d.rows.map(r=>{const m=medal(r.award);return html`<div key=${r.id} class="card" style=${{display:'flex',alignItems:'center',gap:8,padding:'7px 11px',marginBottom:5}}>
+        <span style=${{fontSize:11,fontWeight:700,color:C.muted,minWidth:22}}>${r.rank||''}</span>
+        <div style=${{flex:1,minWidth:0}}><b style=${{fontSize:13}}>${r.student_name}</b><div class="muted" style=${{fontSize:10}}>${r.group_name}${r.year?' · Yr '+r.year:''}</div>${r.behaviour_points>0?html`<div style=${{fontSize:10,color:C.urgent}}>−${r.behaviour_points} behaviour · net ${r.net_pct}%</div>`:''}</div>
+        <b style=${{fontSize:14,color:C.navy,minWidth:46,textAlign:'right'}}>${(+r.pct).toFixed(1)}%</b>
+        <span class="tag" style=${{background:m.bg,color:m.fg,padding:'3px 8px',fontSize:10,fontWeight:700,minWidth:62,textAlign:'center'}}>${m.t}</span></div>`})}
+    </div>`:''}
   </div>`}
 
 function Praise({profile,canManage}){
