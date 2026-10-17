@@ -406,10 +406,65 @@ function PraiseSetup(){
     ${toast&&html`<div style=${{position:'fixed',left:'50%',bottom:24,transform:'translateX(-50%)',background:'#0E1D38',color:'#fff',padding:'10px 16px',borderRadius:999,fontSize:14}}>${toast}</div>`}
   </div>`}
 
+const BODY_AREAS=['Head','Face','Eye','Nose','Mouth / Teeth','Neck','Shoulder','Arm','Elbow','Wrist','Left hand','Right hand','Hand','Finger','Chest','Stomach','Back','Hip','Leg','Left leg','Right leg','Knee','Ankle','Left foot','Right foot','Foot','Other']
+const INCIDENT_STAFF={names:['luqman amla','mohammed atcha','gulfam khan','imteyaz omarji','yasin patel'],emails:['imteyaz.omarji@boltondarululoom.org.uk']}
+function canReportIncident(p){if(!p)return false;if(p.role==='admin')return true;const nm=(p.full_name||'').trim().toLowerCase(),em=(p.email||'').toLowerCase();return INCIDENT_STAFF.names.includes(nm)||INCIDENT_STAFF.emails.includes(em)}
+
+function Incidents({profile}){
+  const [pupils,setPupils]=useState(null);const [q,setQ]=useState('');const [sel,setSel]=useState(null)
+  const [area,setArea]=useState('');const [what,setWhat]=useState('');const [act,setAct]=useState('')
+  const [busy,setBusy]=useState(false);const [toast,setToast]=useState('');const [log,setLog]=useState(null)
+  const fire=m=>{setToast(m);setTimeout(()=>setToast(''),3600)}
+  async function loadPupils(){const {data}=await sb.from('pupils').select('id,first_name,last_name,academic_year,is_active').order('last_name');setPupils((data||[]).filter(p=>p.is_active!==false))}
+  async function loadLog(){const {data}=await sb.functions.invoke('report-incident',{body:{action:'list'}});setLog((data&&data.incidents)||[])}
+  useEffect(()=>{loadPupils();loadLog()},[])
+  async function submit(){if(!sel||!area||!what.trim()){fire('Pick a pupil, body area and what happened');return}
+    setBusy(true)
+    const {data,error}=await sb.functions.invoke('report-incident',{body:{action:'create',pupil_id:sel.id,body_area:area,what_happened:what,action_taken:act}})
+    setBusy(false)
+    if(error||(data&&data.error)){fire((data&&data.error)||(error&&error.message)||'Error sending');return}
+    fire('Logged · '+(data.parents||0)+' parent'+(data.parents===1?'':'s')+' notified')
+    setSel(null);setArea('');setWhat('');setAct('');setQ('');loadLog()}
+  const list=(pupils||[]).filter(p=>(p.first_name+' '+p.last_name).toLowerCase().includes(q.toLowerCase())).slice(0,8)
+  const fmt=d=>new Date(d).toLocaleString('en-GB',{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'})
+  return html`<div>
+    <h2 class="serif" style=${{color:C.navy,marginTop:4}}>Injury & incident report</h2>
+    <p class="muted" style=${{fontSize:12,marginTop:0}}>Record what happened and let the parents know. Every report is saved to the incident log below.</p>
+    <div class="card" style=${{padding:14,marginBottom:16}}>
+      ${!sel?html`<div>
+        <div class="lbl">Pupil</div>
+        <input class="in" placeholder="Search pupil name…" value=${q} onInput=${e=>setQ(e.target.value)}/>
+        ${q&&html`<div style=${{marginTop:6}}>${list.length?list.map(p=>html`<div key=${p.id} class="card" style=${{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'8px 12px',marginBottom:6,cursor:'pointer'}} onClick=${()=>{setSel(p);setQ('')}}><b>${p.first_name} ${p.last_name}</b><span class="muted" style=${{fontSize:11}}>${p.academic_year||''}</span></div>`):html`<div class="muted" style=${{fontSize:12}}>No match</div>`}</div>`}
+      </div>`:html`<div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}>
+        <div><div class="lbl" style=${{marginBottom:0}}>Pupil</div><b>${sel.first_name} ${sel.last_name}</b> <span class="muted" style=${{fontSize:11}}>${sel.academic_year||''}</span></div>
+        <button class="chip" onClick=${()=>setSel(null)}>Change</button>
+      </div>`}
+      ${sel&&html`<div>
+        <div class="lbl" style=${{marginTop:4}}>Where is the injury?</div>
+        <select class="in" value=${area} onChange=${e=>setArea(e.target.value)}><option value="">— choose body area —</option>${BODY_AREAS.map(a=>html`<option key=${a} value=${a}>${a}</option>`)}</select>
+        <div class="lbl" style=${{marginTop:10}}>What happened?</div>
+        <textarea class="in" style=${{minHeight:70,resize:'vertical',fontFamily:'inherit'}} placeholder="Briefly describe what happened…" value=${what} onInput=${e=>setWhat(e.target.value)}></textarea>
+        <div class="lbl" style=${{marginTop:10}}>What was done / first aid given <span class="muted" style=${{fontWeight:400}}>(optional)</span></div>
+        <textarea class="in" style=${{minHeight:50,resize:'vertical',fontFamily:'inherit'}} placeholder="e.g. cleaned and plastered, ice pack applied, resting…" value=${act} onInput=${e=>setAct(e.target.value)}></textarea>
+        <button class="btn" style=${{marginTop:12}} disabled=${busy||!area||!what.trim()} onClick=${submit}>${busy?'Sending…':'Send to parents & log'}</button>
+      </div>`}
+    </div>
+    <h3 class="serif" style=${{color:C.navy,margin:'0 0 8px'}}>Incident log</h3>
+    ${log===null&&html`<div class="muted">Loading…</div>`}
+    ${log&&log.length===0&&html`<div class="card muted" style=${{padding:16}}>No incidents logged yet.</div>`}
+    ${(log||[]).map(r=>html`<div key=${r.id} class="card" style=${{padding:'10px 12px',marginBottom:8}}>
+      <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center'}}><b>${r.pupil_name}</b><span class="tag" style=${{background:C.urgentSoft,color:C.urgent,padding:'3px 9px'}}>${r.body_area}</span></div>
+      <div style=${{fontSize:13,marginTop:5,whiteSpace:'pre-wrap'}}>${r.what_happened}</div>
+      ${r.action_taken&&html`<div style=${{fontSize:12,marginTop:4}}><b>Action:</b> ${r.action_taken}</div>`}
+      <div class="muted" style=${{fontSize:11,marginTop:6}}>${fmt(r.created_at)} · ${r.logged_by_name} · ${r.notified_parents} parent${r.notified_parents===1?'':'s'} notified</div>
+    </div>`)}
+    ${toast&&html`<div style=${{position:'fixed',left:'50%',bottom:24,transform:'translateX(-50%)',background:'#0E1D38',color:'#fff',padding:'10px 16px',borderRadius:999,fontSize:14,maxWidth:'90%',textAlign:'center'}}>${toast}</div>`}
+  </div>`}
+
 function Dashboard({profile,onSignOut}){
   const [pupils,setPupils]=useState(null);const [classes,setClasses]=useState([]);const [groups,setGroups]=useState([])
   const [anns,setAnns]=useState([]);const [tab,setTab]=useState('overview');const [q,setQ]=useState('');const [toast,setToast]=useState('')
-  const [editPupil,setEditPupil]=useState(null);const canManage=profile.role==='admin'
+  const [editPupil,setEditPupil]=useState(null);const canManage=profile.role==='admin';const canIncident=canReportIncident(profile)
   const fire=m=>{setToast(m);setTimeout(()=>setToast(''),3200)}
   async function load(){const [p,c,g,a]=await Promise.all([
     sb.from('pupils').select('*').order('last_name'),
@@ -432,8 +487,8 @@ function Dashboard({profile,onSignOut}){
         <div style=${{color:'#AEBAD0',fontSize:10}}>Al Jamiatul Islamiyah</div></div></div>
       <button onClick=${onSignOut} style=${{background:'transparent',border:'1px solid rgba(255,255,255,.3)',color:'#fff',borderRadius:10,padding:'6px 10px',fontSize:12,cursor:'pointer'}}>Sign out</button></div>
     <div style=${{height:3,background:`linear-gradient(90deg,${C.gold},${C.goldSoft})`}}></div>
-    <div style=${{padding:'8px 16px 0',display:'flex',gap:8,flexWrap:'wrap'}}>${['overview','pupils','attendance','league',...(canManage?['engagement']:[]),'praise','detentions','announce','inbox'].map(t=>html`
-      <button key=${t} onClick=${()=>setTab(t)} class="chip ${tab===t?'on':''}">${t==='overview'?'Overview':t==='pupils'?'Pupils':t==='attendance'?'Attendance':t==='league'?'League':t==='engagement'?'Engagement':t==='praise'?'Praise':t==='detentions'?'Detentions':t==='announce'?'Announce':'Inbox'}</button>`)}</div>
+    <div style=${{padding:'8px 16px 0',display:'flex',gap:8,flexWrap:'wrap'}}>${['overview','pupils','attendance','league',...(canManage?['engagement']:[]),'praise','detentions',...(canIncident?['incidents']:[]),'announce','inbox'].map(t=>html`
+      <button key=${t} onClick=${()=>setTab(t)} class="chip ${tab===t?'on':''}">${t==='overview'?'Overview':t==='pupils'?'Pupils':t==='attendance'?'Attendance':t==='league'?'League':t==='engagement'?'Engagement':t==='praise'?'Praise':t==='detentions'?'Detentions':t==='incidents'?'Injuries':t==='announce'?'Announce':'Inbox'}</button>`)}</div>
     <div style=${{padding:16}}>
       ${pupils===null&&html`<div class="muted">Loading live data…</div>`}
       ${tab==='overview'&&pupils&&html`<div>
@@ -467,6 +522,7 @@ function Dashboard({profile,onSignOut}){
       ${tab==='engagement'&&canManage&&html`<${Engagement}/>`}
       ${tab==='praise'&&html`<${Praise} profile=${profile} canManage=${canManage}/>`}
       ${tab==='detentions'&&html`<${Detentions} profile=${profile}/>`}
+      ${tab==='incidents'&&canIncident&&html`<${Incidents} profile=${profile}/>`}
       ${editPupil&&html`<${PupilEditor} pupil=${editPupil} classes=${classes} onClose=${()=>setEditPupil(null)} onSaved=${m=>{setEditPupil(null);fire(m);load()}}/>`}
     </div>
     ${toast&&html`<div style=${{position:'fixed',left:'50%',bottom:24,transform:'translateX(-50%)',background:'#0E1D38',color:'#fff',padding:'10px 16px',borderRadius:999,fontSize:14,maxWidth:'90%',textAlign:'center'}}>${toast}</div>`}
