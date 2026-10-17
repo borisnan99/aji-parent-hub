@@ -7,9 +7,9 @@ import webpush from "npm:web-push@3.6.7";
 const cors = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type", "Access-Control-Allow-Methods": "POST, OPTIONS" };
 const json = (b: unknown, s = 200) => new Response(JSON.stringify(b), { status: s, headers: { ...cors, "content-type": "application/json" } });
 
-// NOTE: verify these against the live profiles table once the AJI Supabase is reconnected.
+// Safeguarding staff (verified against profiles). Gulfam/Luqman/Atcha are admins; Imteyaz & Yasin are staff.
 const INCIDENT_NAMES = ["luqman amla", "mohammed atcha", "gulfam khan", "imteyaz omarji", "yasin patel"];
-const INCIDENT_EMAILS = ["imteyaz.omarji@boltondarululoom.org.uk"];
+const INCIDENT_EMAILS = ["imteyaz.omarji@boltondarululoom.org.uk", "yasin.patel@boltondarululoom.org.uk"];
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });

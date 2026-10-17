@@ -407,7 +407,7 @@ function PraiseSetup(){
   </div>`}
 
 const BODY_AREAS=['Head','Face','Eye','Nose','Mouth / Teeth','Neck','Shoulder','Arm','Elbow','Wrist','Left hand','Right hand','Hand','Finger','Chest','Stomach','Back','Hip','Leg','Left leg','Right leg','Knee','Ankle','Left foot','Right foot','Foot','Other']
-const INCIDENT_STAFF={names:['luqman amla','mohammed atcha','gulfam khan','imteyaz omarji','yasin patel'],emails:['imteyaz.omarji@boltondarululoom.org.uk']}
+const INCIDENT_STAFF={names:['luqman amla','mohammed atcha','gulfam khan','imteyaz omarji','yasin patel'],emails:['imteyaz.omarji@boltondarululoom.org.uk','yasin.patel@boltondarululoom.org.uk']}
 function canReportIncident(p){if(!p)return false;if(p.role==='admin')return true;const nm=(p.full_name||'').trim().toLowerCase(),em=(p.email||'').toLowerCase();return INCIDENT_STAFF.names.includes(nm)||INCIDENT_STAFF.emails.includes(em)}
 
 function Incidents({profile}){
