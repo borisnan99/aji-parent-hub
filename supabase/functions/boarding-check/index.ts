@@ -1,4 +1,4 @@
-// boarding-check — daily boarding room checks (beds, cupboards, floor, windows, window restrictors).
+// boarding-check — daily boarding room checks (beds, cupboards, carpets, lights, switches, radiators, windows, window restrictors).
 // A missing/faulty window restrictor is flagged immediately to Maulana Gulfam (email + push) to action that day.
 // Access: admins + Ihsaanul Haque (checker) + Gulfam Khan. Resolve/manage: admins (incl. Gulfam).
 // Actions: load, save, resolve, export, add_room, set_room_active.
@@ -54,7 +54,7 @@ Deno.serve(async (req) => {
       const { data: rooms } = await svc.from("boarding_rooms").select("id,name").eq("is_active", true).order("sort");
       const { data: rows } = await svc.from("boarding_checks").select("*").eq("check_date", date);
       const checks: Record<string, any> = {};
-      (rows ?? []).forEach((r: any) => (checks[r.room_id] = { bed_ok: r.bed_ok, cupboard_ok: r.cupboard_ok, floor_ok: r.floor_ok, window_ok: r.window_ok, restrictor_ok: r.restrictor_ok, notes: r.notes, flag_resolved: r.flag_resolved }));
+      (rows ?? []).forEach((r: any) => (checks[r.room_id] = { bed_ok: r.bed_ok, cupboard_ok: r.cupboard_ok, carpet_ok: r.carpet_ok, light_ok: r.light_ok, switch_ok: r.switch_ok, radiator_ok: r.radiator_ok, window_ok: r.window_ok, restrictor_ok: r.restrictor_ok, notes: r.notes, flag_resolved: r.flag_resolved }));
       return json({ ok: true, date, rooms: rooms ?? [], checks, flags: await openFlags(), can_resolve: canResolve });
     }
 
@@ -65,7 +65,7 @@ Deno.serve(async (req) => {
       const { data: existing } = await svc.from("boarding_checks").select("*").eq("room_id", room_id).eq("check_date", date).maybeSingle();
       const prevOpen = !!existing && existing.restrictor_ok === false && !existing.flag_resolved;
       const restrictor_ok = bool(body.restrictor_ok);
-      const row: any = { room_id, check_date: date, bed_ok: bool(body.bed_ok), cupboard_ok: bool(body.cupboard_ok), floor_ok: bool(body.floor_ok), window_ok: bool(body.window_ok), restrictor_ok, notes: (body.notes || "").trim() || null, checked_by: user.id, updated_at: new Date().toISOString() };
+      const row: any = { room_id, check_date: date, bed_ok: bool(body.bed_ok), cupboard_ok: bool(body.cupboard_ok), carpet_ok: bool(body.carpet_ok), light_ok: bool(body.light_ok), switch_ok: bool(body.switch_ok), radiator_ok: bool(body.radiator_ok), window_ok: bool(body.window_ok), restrictor_ok, notes: (body.notes || "").trim() || null, checked_by: user.id, updated_at: new Date().toISOString() };
       if (!restrictor_ok) row.flag_resolved = false;
       const { error } = await svc.from("boarding_checks").upsert(row, { onConflict: "room_id,check_date" });
       if (error) return json({ error: error.message }, 500);
@@ -119,7 +119,7 @@ Deno.serve(async (req) => {
       const { data: rooms } = await svc.from("boarding_rooms").select("id,name");
       const rmap: Record<string, string> = {}; (rooms ?? []).forEach((r: any) => (rmap[r.id] = r.name));
       const nmap = await nameMap((rows ?? []).map((r: any) => r.checked_by));
-      const out = (rows ?? []).map((r: any) => ({ check_date: r.check_date, room_name: rmap[r.room_id] || "?", bed_ok: r.bed_ok, cupboard_ok: r.cupboard_ok, floor_ok: r.floor_ok, window_ok: r.window_ok, restrictor_ok: r.restrictor_ok, flag_resolved: r.flag_resolved, notes: r.notes, checked_by_name: nmap[r.checked_by] || "" }));
+      const out = (rows ?? []).map((r: any) => ({ check_date: r.check_date, room_name: rmap[r.room_id] || "?", bed_ok: r.bed_ok, cupboard_ok: r.cupboard_ok, carpet_ok: r.carpet_ok, light_ok: r.light_ok, switch_ok: r.switch_ok, radiator_ok: r.radiator_ok, window_ok: r.window_ok, restrictor_ok: r.restrictor_ok, flag_resolved: r.flag_resolved, notes: r.notes, checked_by_name: nmap[r.checked_by] || "" }));
       return json({ ok: true, month, rows: out });
     }
 

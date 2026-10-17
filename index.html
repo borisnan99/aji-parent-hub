@@ -463,7 +463,7 @@ function Incidents({profile}){
 
 const BOARDING_STAFF={names:['ihsaanul haque','gulfam khan'],emails:['ihsaanul.haque@boltondarululoom.org.uk','gulfam.khan@boltondarululoom.org.uk']}
 function canBoardingCheck(p){if(!p)return false;if(p.role==='admin')return true;const nm=(p.full_name||'').trim().toLowerCase(),em=(p.email||'').toLowerCase();return BOARDING_STAFF.names.includes(nm)||BOARDING_STAFF.emails.includes(em)}
-const BOARD_ITEMS=[['bed_ok','Beds'],['cupboard_ok','Cupboards'],['floor_ok','Floor'],['window_ok','Windows'],['restrictor_ok','Window restrictors']]
+const BOARD_ITEMS=[['bed_ok','Beds'],['cupboard_ok','Cupboards'],['carpet_ok','Carpets'],['light_ok','Lights'],['switch_ok','Switches'],['radiator_ok','Radiators'],['window_ok','Windows'],['restrictor_ok','Window restrictors']]
 
 function Boarding({profile}){
   const today=new Date().toISOString().slice(0,10)
@@ -473,16 +473,16 @@ function Boarding({profile}){
   const fire=m=>{setToast(m);setTimeout(()=>setToast(''),3600)}
   async function load(d){setRooms(null);const {data,error}=await sb.functions.invoke('boarding-check',{body:{action:'load',date:d||date}});if(error||(data&&data.error)){fire((data&&data.error)||'Error loading');setRooms([]);return}setRooms(data.rooms||[]);setChecks(data.checks||{});setFlags(data.flags||[]);setCanResolve(!!data.can_resolve)}
   useEffect(()=>{load(date)},[date])
-  function statusOf(id){const c=checks[id];if(!c)return 'none';const vals=[c.bed_ok,c.cupboard_ok,c.floor_ok,c.window_ok,c.restrictor_ok];return vals.some(v=>v===false)?'issue':'ok'}
-  function expand(r){const c=checks[r.id];setDraft(c?{bed_ok:c.bed_ok!==false,cupboard_ok:c.cupboard_ok!==false,floor_ok:c.floor_ok!==false,window_ok:c.window_ok!==false,restrictor_ok:c.restrictor_ok!==false,notes:c.notes||''}:{bed_ok:true,cupboard_ok:true,floor_ok:true,window_ok:true,restrictor_ok:true,notes:''});setOpen(r.id)}
+  function statusOf(id){const c=checks[id];if(!c)return 'none';const vals=[c.bed_ok,c.cupboard_ok,c.carpet_ok,c.light_ok,c.switch_ok,c.radiator_ok,c.window_ok,c.restrictor_ok];return vals.some(v=>v===false)?'issue':'ok'}
+  function expand(r){const c=checks[r.id];setDraft(c?{bed_ok:c.bed_ok!==false,cupboard_ok:c.cupboard_ok!==false,carpet_ok:c.carpet_ok!==false,light_ok:c.light_ok!==false,switch_ok:c.switch_ok!==false,radiator_ok:c.radiator_ok!==false,window_ok:c.window_ok!==false,restrictor_ok:c.restrictor_ok!==false,notes:c.notes||''}:{bed_ok:true,cupboard_ok:true,carpet_ok:true,light_ok:true,switch_ok:true,radiator_ok:true,window_ok:true,restrictor_ok:true,notes:''});setOpen(r.id)}
   async function save(roomId,payload){setBusy(true);const {data,error}=await sb.functions.invoke('boarding-check',{body:{action:'save',room_id:roomId,date,...payload}});setBusy(false);if(error||(data&&data.error)){fire((data&&data.error)||'Error saving');return}fire(data.flagged?'Saved · flagged to Maulana Gulfam':'Saved');setOpen(null);load(date)}
-  function allGood(roomId){save(roomId,{bed_ok:true,cupboard_ok:true,floor_ok:true,window_ok:true,restrictor_ok:true,notes:''})}
+  function allGood(roomId){save(roomId,{bed_ok:true,cupboard_ok:true,carpet_ok:true,light_ok:true,switch_ok:true,radiator_ok:true,window_ok:true,restrictor_ok:true,notes:''})}
   async function resolve(f){const {data,error}=await sb.functions.invoke('boarding-check',{body:{action:'resolve',room_id:f.room_id,date:f.check_date}});if(error||(data&&data.error)){fire((data&&data.error)||'Error');return}fire('Marked resolved');load(date)}
   async function exportCsv(){const {data,error}=await sb.functions.invoke('boarding-check',{body:{action:'export',month:date.slice(0,7)}});if(error||(data&&data.error)){fire('Export failed');return}
     const rows=(data&&data.rows)||[];if(!rows.length){fire('No checks this month yet');return}
     const yn=v=>v===true?'OK':v===false?'ISSUE':''
-    const head=['Date','Room','Beds','Cupboards','Floor','Windows','Window restrictors','Restrictor resolved','Checked by','Notes']
-    const out=[head].concat(rows.map(r=>[r.check_date,r.room_name,yn(r.bed_ok),yn(r.cupboard_ok),yn(r.floor_ok),yn(r.window_ok),yn(r.restrictor_ok),r.restrictor_ok===false?(r.flag_resolved?'Yes':'No'):'',r.checked_by_name||'',r.notes||'']))
+    const head=['Date','Room','Beds','Cupboards','Carpets','Lights','Switches','Radiators','Windows','Window restrictors','Restrictor resolved','Checked by','Notes']
+    const out=[head].concat(rows.map(r=>[r.check_date,r.room_name,yn(r.bed_ok),yn(r.cupboard_ok),yn(r.carpet_ok),yn(r.light_ok),yn(r.switch_ok),yn(r.radiator_ok),yn(r.window_ok),yn(r.restrictor_ok),r.restrictor_ok===false?(r.flag_resolved?'Yes':'No'):'',r.checked_by_name||'',r.notes||'']))
     const csv=out.map(r=>r.map(x=>'"'+(x==null?'':x).toString().replace(/"/g,'""')+'"').join(',')).join(String.fromCharCode(10))
     const u=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));const a=document.createElement('a');a.href=u;a.download='boarding_checks_'+date.slice(0,7)+'.csv';a.click();URL.revokeObjectURL(u)}
   const fmtD=d=>new Date(d+'T00:00:00').toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'})
