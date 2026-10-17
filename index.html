@@ -657,10 +657,74 @@ function Behaviour({profile}){
     ${toast&&html`<div style=${{position:'fixed',left:'50%',bottom:24,transform:'translateX(-50%)',background:'#0E1D38',color:'#fff',padding:'10px 16px',borderRadius:999,fontSize:14,maxWidth:'90%',textAlign:'center'}}>${toast}</div>`}
   </div>`}
 
+const SUP_ROOM_CHECKS=['Cleanliness','Window Sills','Lights','Storage Units','Beddings','Sockets','Showers and Toilets','Fire Extinguishers','Emergency Lights','Fire Escape Routes','Students settled in their rooms by lights out','Corridors and fire exits clear']
+function canSupervisor(p){if(!p)return false;if(p.role==='admin')return true;const em=(p.email||'').toLowerCase(),nm=(p.full_name||'').trim().toLowerCase();return ['gulfam khan','zubair patel'].includes(nm)||['gulfam.khan@boltondarululoom.org.uk','zubair.patel@boltondarululoom.org.uk'].includes(em)}
+
+function Supervisor({profile}){
+  const today=new Date().toISOString().slice(0,10)
+  const [date,setDate]=useState(today);const [name,setName]=useState(profile.full_name||'')
+  const [shift,setShift]=useState('');const [arrived,setArrived]=useState('');const [lightsOut,setLightsOut]=useState('')
+  const [checks,setChecks]=useState([]);const [secured,setSecured]=useState(false);const [timeSecured,setTimeSecured]=useState('')
+  const [welfare,setWelfare]=useState('');const [maint,setMaint]=useState('');const [important,setImportant]=useState('')
+  const [rows,setRows]=useState(null);const [busy,setBusy]=useState(false);const [toast,setToast]=useState('')
+  const fire=m=>{setToast(m);setTimeout(()=>setToast(''),3600)}
+  async function loadRows(){const {data}=await sb.functions.invoke('supervisor-checklist',{body:{action:'list'}});setRows((data&&data.rows)||[])}
+  useEffect(()=>{loadRows()},[])
+  function toggleCheck(it){setChecks(c=>c.includes(it)?c.filter(x=>x!==it):c.concat(it))}
+  async function submit(){if(!shift){fire('Choose Day or Night');return}
+    setBusy(true)
+    const {data,error}=await sb.functions.invoke('supervisor-checklist',{body:{action:'save',check_date:date,supervisor_name:name,shift,arrived_at:arrived,lights_out:lightsOut,room_checks:checks,final_secured:secured,time_secured:timeSecured,welfare_incidents:welfare,maintenance_notes:maint,important_info:important}})
+    setBusy(false)
+    if(error||(data&&data.error)){fire((data&&data.error)||'Error saving');return}
+    fire('Checklist saved')
+    setShift('');setArrived('');setLightsOut('');setChecks([]);setSecured(false);setTimeSecured('');setWelfare('');setMaint('');setImportant('');loadRows()}
+  async function exportCsv(){const {data,error}=await sb.functions.invoke('supervisor-checklist',{body:{action:'export',month:date.slice(0,7)}})
+    if(error||(data&&data.error)){fire('Export failed');return}
+    const rs=(data&&data.rows)||[];if(!rs.length){fire('No checklists this month');return}
+    const head=['Date','Supervisor','Shift','Arrived','Lights out','Room checks done','Final check secured','Time secured','Welfare/Incidents','Maintenance/Handover','Important info','Submitted by']
+    const out=[head].concat(rs.map(r=>[r.check_date,r.supervisor_name||'',r.shift||'',r.arrived_at||'',r.lights_out||'',(r.room_checks||[]).join('; '),r.final_secured?'Yes':'No',r.time_secured||'',r.welfare_incidents||'',r.maintenance_notes||'',r.important_info||'',r.logged_by_name||'']))
+    const csv=out.map(r=>r.map(x=>'"'+(x==null?'':x).toString().replace(/"/g,'""')+'"').join(',')).join(String.fromCharCode(10))
+    const u=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));const a=document.createElement('a');a.href=u;a.download='supervisor_checklists_'+date.slice(0,7)+'.csv';a.click();URL.revokeObjectURL(u)}
+  const fmtDate=d=>new Date(d+'T00:00:00').toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'})
+  return html`<div>
+    <h2 class="serif" style=${{color:C.navy,marginTop:4}}>Boarding supervisor checklist</h2>
+    <div class="card" style=${{padding:14,marginBottom:16}}>
+      <div class="lbl">Date</div><input class="in" type="date" value=${date} onInput=${e=>setDate(e.target.value)}/>
+      <div class="lbl" style=${{marginTop:10}}>Supervisor name</div><input class="in" value=${name} onInput=${e=>setName(e.target.value)} placeholder="Your name"/>
+      <div class="lbl" style=${{marginTop:10}}>Day or night supervision</div>
+      <div style=${{display:'flex',gap:8}}>${['DAY','NIGHT'].map(sh=>html`<button key=${sh} class="chip ${shift===sh?'on':''}" style=${{flex:1}} onClick=${()=>setShift(sh)}>${sh}</button>`)}</div>
+      <div style=${{display:'flex',gap:10,marginTop:10}}>
+        <div style=${{flex:1}}><div class="lbl">Arrived on site</div><input class="in" type="time" value=${arrived} onInput=${e=>setArrived(e.target.value)}/></div>
+        <div style=${{flex:1}}><div class="lbl">Lights out</div><input class="in" type="time" value=${lightsOut} onInput=${e=>setLightsOut(e.target.value)}/></div>
+      </div>
+      <div class="lbl" style=${{marginTop:12}}>All floors room checks</div>
+      <div style=${{display:'flex',flexWrap:'wrap',gap:6}}>${SUP_ROOM_CHECKS.map(it=>html`<button key=${it} class="chip" style=${{background:checks.includes(it)?C.green:'',color:checks.includes(it)?'#fff':''}} onClick=${()=>toggleCheck(it)}>${checks.includes(it)?'✓ ':''}${it}</button>`)}</div>
+      <div class="lbl" style=${{marginTop:12}}>Final boarding check at 11:30 pm</div>
+      <button class="chip" style=${{background:secured?C.green:'',color:secured?'#fff':''}} onClick=${()=>setSecured(!secured)}>${secured?'✓ ':''}Gates, windows and external doors secured</button>
+      <div class="lbl" style=${{marginTop:12}}>Time site secured</div><input class="in" type="time" value=${timeSecured} onInput=${e=>setTimeSecured(e.target.value)}/>
+      <div class="lbl" style=${{marginTop:12}}>Student welfare / incidents</div><textarea class="in" style=${{minHeight:54,resize:'vertical',fontFamily:'inherit'}} value=${welfare} onInput=${e=>setWelfare(e.target.value)}></textarea>
+      <div class="lbl" style=${{marginTop:10}}>Maintenance / handover notes</div><textarea class="in" style=${{minHeight:54,resize:'vertical',fontFamily:'inherit'}} value=${maint} onInput=${e=>setMaint(e.target.value)}></textarea>
+      <div class="lbl" style=${{marginTop:10}}>Important information / issues</div><textarea class="in" style=${{minHeight:54,resize:'vertical',fontFamily:'inherit'}} value=${important} onInput=${e=>setImportant(e.target.value)}></textarea>
+      <button class="btn" style=${{marginTop:14}} disabled=${busy||!shift} onClick=${submit}>${busy?'Saving…':'Submit checklist'}</button>
+    </div>
+    <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
+      <h3 class="serif" style=${{color:C.navy,margin:0}}>Recent submissions</h3>
+      <button class="chip" onClick=${exportCsv}>📄 Month CSV</button>
+    </div>
+    ${rows===null&&html`<div class="muted">Loading…</div>`}
+    ${rows&&rows.length===0&&html`<div class="card muted" style=${{padding:16}}>No checklists submitted yet.</div>`}
+    ${(rows||[]).map(r=>html`<div key=${r.id} class="card" style=${{padding:'10px 12px',marginBottom:6}}>
+      <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center'}}><b>${fmtDate(r.check_date)} · ${r.shift||''}</b><span class="tag" style=${{background:r.final_secured?'#E5EEE7':C.urgentSoft,color:r.final_secured?C.green:C.urgent,padding:'3px 9px'}}>${r.final_secured?'Secured':'Not secured'}</span></div>
+      <div class="muted" style=${{fontSize:12,marginTop:4}}>${r.supervisor_name||r.logged_by_name}${r.arrived_at?' · in '+r.arrived_at:''}${r.lights_out?' · lights out '+r.lights_out:''}${r.time_secured?' · secured '+r.time_secured:''}</div>
+      <div class="muted" style=${{fontSize:11,marginTop:3}}>${(r.room_checks||[]).length}/${SUP_ROOM_CHECKS.length} room checks${r.welfare_incidents?' · welfare noted':''}${r.maintenance_notes?' · maintenance noted':''}${r.important_info?' · issues noted':''}</div>
+    </div>`)}
+    ${toast&&html`<div style=${{position:'fixed',left:'50%',bottom:24,transform:'translateX(-50%)',background:'#0E1D38',color:'#fff',padding:'10px 16px',borderRadius:999,fontSize:14,maxWidth:'90%',textAlign:'center'}}>${toast}</div>`}
+  </div>`}
+
 function Dashboard({profile,onSignOut}){
   const [pupils,setPupils]=useState(null);const [classes,setClasses]=useState([]);const [groups,setGroups]=useState([])
   const [anns,setAnns]=useState([]);const [tab,setTab]=useState('overview');const [q,setQ]=useState('');const [toast,setToast]=useState('')
-  const [editPupil,setEditPupil]=useState(null);const canManage=profile.role==='admin';const canIncident=canReportIncident(profile);const canBoarding=canBoardingCheck(profile)
+  const [editPupil,setEditPupil]=useState(null);const canManage=profile.role==='admin';const canIncident=canReportIncident(profile);const canBoarding=canBoardingCheck(profile);const canSup=canSupervisor(profile)
   const fire=m=>{setToast(m);setTimeout(()=>setToast(''),3200)}
   async function load(){const [p,c,g,a]=await Promise.all([
     sb.from('pupils').select('*').order('last_name'),
@@ -683,8 +747,8 @@ function Dashboard({profile,onSignOut}){
         <div style=${{color:'#AEBAD0',fontSize:10}}>Al Jamiatul Islamiyah</div></div></div>
       <button onClick=${onSignOut} style=${{background:'transparent',border:'1px solid rgba(255,255,255,.3)',color:'#fff',borderRadius:10,padding:'6px 10px',fontSize:12,cursor:'pointer'}}>Sign out</button></div>
     <div style=${{height:3,background:`linear-gradient(90deg,${C.gold},${C.goldSoft})`}}></div>
-    <div style=${{padding:'8px 16px 0',display:'flex',gap:8,flexWrap:'wrap'}}>${['overview','pupils','attendance','league',...(canManage?['engagement']:[]),'praise','detentions','behaviour',...(canIncident?['incidents']:[]),...(canBoarding?['boarding']:[]),'announce','inbox'].map(t=>html`
-      <button key=${t} onClick=${()=>setTab(t)} class="chip ${tab===t?'on':''}">${t==='overview'?'Overview':t==='pupils'?'Pupils':t==='attendance'?'Attendance':t==='league'?'League':t==='engagement'?'Engagement':t==='praise'?'Praise':t==='detentions'?'Detentions':t==='behaviour'?'Behaviour':t==='incidents'?'Injuries':t==='boarding'?'Boarding':t==='announce'?'Announce':'Inbox'}</button>`)}</div>
+    <div style=${{padding:'8px 16px 0',display:'flex',gap:8,flexWrap:'wrap'}}>${['overview','pupils','attendance','league',...(canManage?['engagement']:[]),'praise','detentions','behaviour',...(canIncident?['incidents']:[]),...(canBoarding?['boarding']:[]),...(canSup?['supervisor']:[]),'announce','inbox'].map(t=>html`
+      <button key=${t} onClick=${()=>setTab(t)} class="chip ${tab===t?'on':''}">${t==='overview'?'Overview':t==='pupils'?'Pupils':t==='attendance'?'Attendance':t==='league'?'League':t==='engagement'?'Engagement':t==='praise'?'Praise':t==='detentions'?'Detentions':t==='behaviour'?'Behaviour':t==='incidents'?'Injuries':t==='boarding'?'Boarding':t==='supervisor'?'Supervisor':t==='announce'?'Announce':'Inbox'}</button>`)}</div>
     <div style=${{padding:16}}>
       ${pupils===null&&html`<div class="muted">Loading live data…</div>`}
       ${tab==='overview'&&pupils&&html`<div>
@@ -721,6 +785,7 @@ function Dashboard({profile,onSignOut}){
       ${tab==='behaviour'&&html`<${Behaviour} profile=${profile}/>`}
       ${tab==='incidents'&&canIncident&&html`<${Incidents} profile=${profile}/>`}
       ${tab==='boarding'&&canBoarding&&html`<${Boarding} profile=${profile}/>`}
+      ${tab==='supervisor'&&canSup&&html`<${Supervisor} profile=${profile}/>`}
       ${editPupil&&html`<${PupilEditor} pupil=${editPupil} classes=${classes} onClose=${()=>setEditPupil(null)} onSaved=${m=>{setEditPupil(null);fire(m);load()}}/>`}
     </div>
     ${toast&&html`<div style=${{position:'fixed',left:'50%',bottom:24,transform:'translateX(-50%)',background:'#0E1D38',color:'#fff',padding:'10px 16px',borderRadius:999,fontSize:14,maxWidth:'90%',textAlign:'center'}}>${toast}</div>`}
