@@ -658,11 +658,12 @@ function Behaviour({profile}){
   </div>`}
 
 const SUP_ROOM_CHECKS=['Cleanliness','Window Sills','Lights','Storage Units','Beddings','Sockets','Showers and Toilets','Fire Extinguishers','Emergency Lights','Fire Escape Routes','Students settled in their rooms by lights out','Corridors and fire exits clear']
+const SUP_SUPERVISORS=['Zubair Patel','Gulfam Khan','Yasin Patel','Ihsaanul Haque','Omar Sher','Luqman Amla']
 function canSupervisor(p){if(!p)return false;if(p.role==='admin')return true;const em=(p.email||'').toLowerCase(),nm=(p.full_name||'').trim().toLowerCase();return ['gulfam khan','zubair patel'].includes(nm)||['gulfam.khan@boltondarululoom.org.uk','zubair.patel@boltondarululoom.org.uk'].includes(em)}
 
 function Supervisor({profile}){
   const today=new Date().toISOString().slice(0,10)
-  const [date,setDate]=useState(today);const [name,setName]=useState(profile.full_name||'')
+  const [date,setDate]=useState(today);const [name,setName]=useState(SUP_SUPERVISORS.includes(profile.full_name)?profile.full_name:'')
   const [shift,setShift]=useState('');const [arrived,setArrived]=useState('');const [lightsOut,setLightsOut]=useState('')
   const [checks,setChecks]=useState([]);const [secured,setSecured]=useState(false);const [timeSecured,setTimeSecured]=useState('')
   const [welfare,setWelfare]=useState('');const [maint,setMaint]=useState('');const [important,setImportant]=useState('')
@@ -671,7 +672,7 @@ function Supervisor({profile}){
   async function loadRows(){const {data}=await sb.functions.invoke('supervisor-checklist',{body:{action:'list'}});setRows((data&&data.rows)||[])}
   useEffect(()=>{loadRows()},[])
   function toggleCheck(it){setChecks(c=>c.includes(it)?c.filter(x=>x!==it):c.concat(it))}
-  async function submit(){if(!shift){fire('Choose Day or Night');return}
+  async function submit(){if(!name){fire('Choose the supervisor');return}if(!shift){fire('Choose Day or Night');return}
     setBusy(true)
     const {data,error}=await sb.functions.invoke('supervisor-checklist',{body:{action:'save',check_date:date,supervisor_name:name,shift,arrived_at:arrived,lights_out:lightsOut,room_checks:checks,final_secured:secured,time_secured:timeSecured,welfare_incidents:welfare,maintenance_notes:maint,important_info:important}})
     setBusy(false)
@@ -690,7 +691,7 @@ function Supervisor({profile}){
     <h2 class="serif" style=${{color:C.navy,marginTop:4}}>Boarding supervisor checklist</h2>
     <div class="card" style=${{padding:14,marginBottom:16}}>
       <div class="lbl">Date</div><input class="in" type="date" value=${date} onInput=${e=>setDate(e.target.value)}/>
-      <div class="lbl" style=${{marginTop:10}}>Supervisor name</div><input class="in" value=${name} onInput=${e=>setName(e.target.value)} placeholder="Your name"/>
+      <div class="lbl" style=${{marginTop:10}}>Supervisor name</div><select class="in" value=${name} onChange=${e=>setName(e.target.value)}><option value="">- choose supervisor -</option>${SUP_SUPERVISORS.map(nm=>html`<option key=${nm} value=${nm}>${nm}</option>`)}</select>
       <div class="lbl" style=${{marginTop:10}}>Day or night supervision</div>
       <div style=${{display:'flex',gap:8}}>${['DAY','NIGHT'].map(sh=>html`<button key=${sh} class="chip ${shift===sh?'on':''}" style=${{flex:1}} onClick=${()=>setShift(sh)}>${sh}</button>`)}</div>
       <div style=${{display:'flex',gap:10,marginTop:10}}>
@@ -705,7 +706,7 @@ function Supervisor({profile}){
       <div class="lbl" style=${{marginTop:12}}>Student welfare / incidents</div><textarea class="in" style=${{minHeight:54,resize:'vertical',fontFamily:'inherit'}} value=${welfare} onInput=${e=>setWelfare(e.target.value)}></textarea>
       <div class="lbl" style=${{marginTop:10}}>Maintenance / handover notes</div><textarea class="in" style=${{minHeight:54,resize:'vertical',fontFamily:'inherit'}} value=${maint} onInput=${e=>setMaint(e.target.value)}></textarea>
       <div class="lbl" style=${{marginTop:10}}>Important information / issues</div><textarea class="in" style=${{minHeight:54,resize:'vertical',fontFamily:'inherit'}} value=${important} onInput=${e=>setImportant(e.target.value)}></textarea>
-      <button class="btn" style=${{marginTop:14}} disabled=${busy||!shift} onClick=${submit}>${busy?'Saving…':'Submit checklist'}</button>
+      <button class="btn" style=${{marginTop:14}} disabled=${busy||!shift||!name} onClick=${submit}>${busy?'Saving…':'Submit checklist'}</button>
     </div>
     <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
       <h3 class="serif" style=${{color:C.navy,margin:0}}>Recent submissions</h3>
