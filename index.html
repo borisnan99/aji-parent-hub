@@ -946,6 +946,38 @@ function KitchenDaily({profile,fire}){
     ;(data.temps||[]).forEach(t=>rows.push([t.log_date,t.kind,t.item||'',t.temp_c,t.pass===true?'Pass':t.pass===false?'FAIL':'']))
     const csv=rows.map(r=>r.map(x=>'"'+(x==null?'':x).toString().replace(/"/g,'""')+'"').join(',')).join(String.fromCharCode(10))
     const url=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));const a=document.createElement('a');a.href=url;a.download='kitchen_diary_'+date.slice(0,7)+'.csv';a.click();URL.revokeObjectURL(url)}
+  async function printMonth(){
+    const month=date.slice(0,7)
+    const {data}=await sb.functions.invoke('kitchen',{body:{action:'month_export',month}})
+    if(!data||!data.ok){fire('Could not load month');return}
+    const isod=x=>new Date(x.getTime()-x.getTimezoneOffset()*60000).toISOString().slice(0,10)
+    const dayMap={};(data.days||[]).forEach(d=>dayMap[d.log_date]=d)
+    const tempMap={};(data.temps||[]).forEach(t=>{(tempMap[t.log_date]=tempMap[t.log_date]||[]).push(t)})
+    const [y,m]=month.split('-').map(Number);const last=new Date(y,m,0).getDate()
+    const wk={};for(let i=1;i<=last;i++){const dt=new Date(y,m-1,i);const dow=(dt.getDay()+6)%7;const mon=new Date(dt);mon.setDate(dt.getDate()-dow);const key=isod(mon);(wk[key]=wk[key]||[]).push(dt)}
+    const esc=s=>(s==null?'':String(s)).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    const monthLbl=new Date(y,m-1,1).toLocaleDateString('en-GB',{month:'long',year:'numeric'})
+    const cell=dt=>{const d=dayMap[isod(dt)]||{}
+      const temps=(tempMap[isod(dt)]||[]).map(t=>esc(t.item)+' '+t.temp_c+'°C'+(t.pass===false?' (FAIL)':'')).join(', ')
+      const probs=[d.open_notes,d.close_notes].filter(Boolean).map(esc).join(' / ')
+      const fr=(d.open_fridge!=null||d.close_fridge!=null)?('Fridge '+(d.open_fridge!=null?d.open_fridge:'–')+(d.close_fridge!=null?' / '+d.close_fridge:'')+'°C'):''
+      const fz=(d.open_freezer!=null||d.close_freezer!=null)?('Freezer '+(d.open_freezer!=null?d.open_freezer:'–')+(d.close_freezer!=null?' / '+d.close_freezer:'')+'°C'):''
+      const name=d.open_by_name||d.close_by_name||''
+      return '<div class="cell"><div class="dh">'+dt.toLocaleDateString('en-GB',{weekday:'long'})+' <span>'+dt.toLocaleDateString('en-GB',{day:'numeric',month:'short'})+'</span></div>'+
+        (d.catered?'<div class="catered">Catered / no food prepared</div>':
+        '<div class="q">Any problems or changes – what did you do?</div><div class="ans">'+(probs||'')+'</div>'+
+        '<div class="temps">'+[fr,fz,temps?('Cooking: '+temps):''].filter(Boolean).join(' · ')+'</div>'+
+        '<div class="checks"><span>Opening '+(d.open_safe_methods?'☑':'☐')+'</span><span>Closing '+(d.close_safe_methods?'☑':'☐')+'</span></div>'+
+        '<div class="sign">Name: '+esc(name)+' &nbsp; Signed: ______</div>'+
+        '<div class="safe">Our safe methods were followed and effectively supervised today.</div>')+'</div>'}
+    const weeksHtml=Object.keys(wk).sort().map(key=>{const days=wk[key];const cells=days.map(cell).join('')
+      const ex=days.map(dt=>dayMap[isod(dt)]).find(d=>d&&d.extra_checks)
+      const exHtml='<div class="cell extra"><div class="dh">Extra checks this week</div><div class="ans">'+esc(ex?ex.extra_checks:'')+'</div></div>'
+      return '<section class="week"><div class="wc">Week commencing '+new Date(key+'T00:00:00').toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric'})+'</div><div class="grid">'+cells+exHtml+'</div></section>'}).join('')
+    const css='@page{size:A4;margin:12mm}*{box-sizing:border-box}body{font-family:Arial,sans-serif;color:#1B2438;font-size:10px}.head{display:flex;align-items:center;gap:10px;border-bottom:3px solid #C4A24C;padding-bottom:8px;margin-bottom:10px}.cr{width:40px;height:40px;border-radius:8px;background:#14294D;color:#C4A24C;display:flex;align-items:center;justify-content:center;font-family:Georgia,serif;font-weight:700;font-size:15px}h1{font-family:Georgia,serif;font-size:17px;color:#14294D;margin:0}.sub{color:#6E6A60;font-size:11px}.week{break-inside:avoid;margin-bottom:12px}.wc{background:#14294D;color:#fff;font-weight:700;padding:4px 8px;border-radius:5px;font-size:11px;margin-bottom:6px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:6px}.cell{border:1px solid #C9C3B4;border-radius:6px;padding:6px 8px;min-height:74px}.dh{font-weight:700;color:#14294D;border-bottom:1px solid #E8E3D6;padding-bottom:3px;margin-bottom:3px}.dh span{font-weight:400;color:#6E6A60}.q{font-size:8px;color:#6E6A60}.ans{min-height:16px;font-size:9.5px}.temps{font-size:9px;color:#14294D;margin-top:3px}.checks{display:flex;gap:14px;font-size:9px;margin-top:4px}.sign{font-size:9px;margin-top:4px}.safe{font-size:7.5px;color:#9A948A;margin-top:3px;font-style:italic}.catered{font-size:10px;color:#6E6A60;font-style:italic;padding:10px 0}.extra{background:#FAF8F3}.foot{margin-top:6px;color:#9A948A;font-size:8px;text-align:center}'
+    const doc='<!doctype html><html><head><meta charset="utf-8"><title>Kitchen Diary '+monthLbl+'</title><style>'+css+'</style></head><body><div class="head"><div class="cr">AJI</div><div><h1>Kitchen Daily Diary — '+monthLbl+'</h1><div class="sub">Al Jamiatul Islamiyah · Bolton Darul Uloom · Safer Food Better Business</div></div></div>'+weeksHtml+'<div class="foot">Printed from Parent Hub · '+new Date().toLocaleDateString('en-GB')+'</div></body></html>'
+    const w=window.open('','_blank');if(!w){fire('Allow pop-ups to print the diary');return}
+    w.document.write(doc);w.document.close();w.focus();setTimeout(()=>{try{w.print()}catch(e){}},500)}
   const Check=(title,s,setS,which)=>html`<div class="card" style=${{padding:'12px 14px',marginBottom:10}}>
     <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}><b>${title}</b>${day&&day[(which==='daily_open'?'open':'close')+'_by_name']?html`<span class="muted" style=${{fontSize:10}}>✓ ${day[(which==='daily_open'?'open':'close')+'_by_name']}</span>`:''}</div>
     <div style=${{display:'flex',gap:8,flexWrap:'wrap'}}>
@@ -960,6 +992,7 @@ function KitchenDaily({profile,fire}){
     <div style=${{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap',marginBottom:10}}>
       <input class="in" type="date" style=${{width:'auto'}} value=${date} onInput=${e=>setDate(e.target.value)}/>
       <button class="chip" onClick=${exportMonth}>📄 Month CSV</button>
+      <button class="chip" onClick=${printMonth}>🖨 Print month</button>
       <label style=${{display:'flex',gap:6,alignItems:'center',fontSize:12,marginLeft:'auto',cursor:'pointer'}}><input type="checkbox" checked=${catered} onChange=${e=>setCatered(e.target.checked)}/>Catered / no food prepared</label>
     </div>
     ${catered?html`<div class="card" style=${{padding:16,color:C.muted}}>Marked as catered / no food prepared today — kitchen checks are not required. Untick above if food is being prepared.</div>`:html`<div>
