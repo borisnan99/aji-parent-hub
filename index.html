@@ -88,7 +88,8 @@ function Login(){
   const [mode,setMode]=useState('signin');const [sent,setSent]=useState(false)
   async function go(){setBusy(true);setErr('');const {error}=await sb.auth.signInWithPassword({email:email.trim(),password:pw});setBusy(false);if(error)setErr(error.message)}
   async function sendReset(){if(!email.trim()){setErr('Enter your email address first');return}setBusy(true);setErr('')
-    const {error}=await sb.auth.resetPasswordForEmail(email.trim(),{redirectTo:window.location.origin});setBusy(false);if(error){setErr(error.message);return}setSent(true)}
+    try{await sb.functions.invoke('password-reset',{body:{email:email.trim()}})}catch(e){}
+    setBusy(false);setSent(true)}
   return html`<div class="center"><div style=${{width:'100%',maxWidth:380,textAlign:'center'}}>
     <img src="/logo.png" alt="Al Jamiatul Islamiyah — Bolton Darul Uloom" style=${{width:'min(300px,76vw)',height:'auto',margin:'0 auto',display:'block'}}/>
     <div class="muted" style=${{fontSize:10,letterSpacing:'.22em',fontWeight:600,marginTop:8}}>SCHOOL COMMUNICATION PORTAL</div>
@@ -1717,7 +1718,10 @@ function Detentions({profile}){
 
 function App(){
   const [session,setSession]=useState(undefined);const [profile,setProfile]=useState(null);const [recovery,setRecovery]=useState(false)
-  useEffect(()=>{sb.auth.getSession().then(({data})=>setSession(data.session));const {data:sub}=sb.auth.onAuthStateChange((e,s)=>{if(e==='PASSWORD_RECOVERY')setRecovery(true);setSession(s)});return()=>sub.subscription.unsubscribe()},[])
+  useEffect(()=>{
+    const q=new URLSearchParams(window.location.search);const th=q.get('token_hash');const ty=q.get('type')
+    if(th&&ty==='recovery'){sb.auth.verifyOtp({type:'recovery',token_hash:th}).then(({error})=>{try{history.replaceState(null,'',window.location.pathname)}catch(e){}if(!error)setRecovery(true)})}
+    sb.auth.getSession().then(({data})=>setSession(data.session));const {data:sub}=sb.auth.onAuthStateChange((e,s)=>{if(e==='PASSWORD_RECOVERY')setRecovery(true);setSession(s)});return()=>sub.subscription.unsubscribe()},[])
   useEffect(()=>{if(session&&session.user)sb.from('profiles').select('*').eq('id',session.user.id).single().then(({data})=>setProfile(data));else setProfile(null)},[session])
   if(recovery)return html`<${ResetPassword} onDone=${()=>setRecovery(false)}/>`
   if(session===undefined)return html`<div class="center muted">Loading…</div>`
