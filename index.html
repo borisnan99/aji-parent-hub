@@ -902,6 +902,202 @@ function Medical({profile}){
     ${toast&&html`<div style=${{position:'fixed',left:'50%',bottom:24,transform:'translateX(-50%)',background:'#0E1D38',color:'#fff',padding:'10px 16px',borderRadius:999,fontSize:14,maxWidth:'90%',textAlign:'center'}}>${toast}</div>`}
   </div>`}
 
+function canKitchen(p){if(!p)return false;if(p.role==='admin')return true;return ['kulsum'].some(k=>(p.full_name||'').toLowerCase().includes(k))}
+const kToday=()=>new Date().toLocaleDateString('en-CA')
+function fridgeTag(n){if(n==null||n==='')return null;n=Number(n);return n>8?{bg:C.urgentSoft,fg:C.urgent,l:'Over 8°C — action'}:n>5?{bg:'#FBECC9',fg:'#8A6D1B',l:'Slightly high'}:{bg:'#E5EEE7',fg:C.green,l:'OK ≤5°C'}}
+function freezerTag(n){if(n==null||n==='')return null;n=Number(n);return n>-15?{bg:C.urgentSoft,fg:C.urgent,l:'Too warm — action'}:n>-18?{bg:'#FBECC9',fg:'#8A6D1B',l:'Slightly high'}:{bg:'#E5EEE7',fg:C.green,l:'OK ≤−18°C'}}
+
+function Kitchen({profile}){
+  const [tab,setTab]=useState('daily');const [toast,setToast]=useState('')
+  const fire=m=>{setToast(m);setTimeout(()=>setToast(''),3200)}
+  const TABS=[['daily','Daily checks'],['cleaning','Cleaning'],['recipes','Recipes'],['allergies','Allergies & diets'],['coshh','COSHH'],['incidents','Incidents']]
+  return html`<div>
+    <h2 class="serif" style=${{color:C.navy,margin:'2px 0 2px'}}>Kitchen — food safety</h2>
+    <p class="muted" style=${{fontSize:12,marginTop:0}}>Daily diary and records, aligned to Safer Food Better Business (SFBB).</p>
+    <div style=${{display:'flex',gap:6,flexWrap:'wrap',marginBottom:12}}>${TABS.map(([k,l])=>html`<button key=${k} class="chip ${tab===k?'on':''}" onClick=${()=>setTab(k)}>${l}</button>`)}</div>
+    ${tab==='daily'&&html`<${KitchenDaily} profile=${profile} fire=${fire}/>`}
+    ${tab==='cleaning'&&html`<${KitchenCleaning} profile=${profile} fire=${fire}/>`}
+    ${tab==='recipes'&&html`<${KitchenRecipes} profile=${profile} fire=${fire}/>`}
+    ${tab==='allergies'&&html`<${KitchenAllergies} profile=${profile} fire=${fire}/>`}
+    ${tab==='coshh'&&html`<${KitchenCoshh} profile=${profile} fire=${fire}/>`}
+    ${tab==='incidents'&&html`<${KitchenIncidents} profile=${profile} fire=${fire}/>`}
+    ${toast&&html`<div style=${{position:'fixed',left:'50%',bottom:24,transform:'translateX(-50%)',background:'#0E1D38',color:'#fff',padding:'10px 16px',borderRadius:999,fontSize:14,maxWidth:'90%',textAlign:'center'}}>${toast}</div>`}
+  </div>`}
+
+function KitchenDaily({profile,fire}){
+  const [date,setDate]=useState(kToday());const [day,setDay]=useState(null);const [temps,setTemps]=useState([]);const [busy,setBusy]=useState(false)
+  const [o,setO]=useState({fridge:'',freezer:'',safe:false,notes:''});const [c,setC]=useState({fridge:'',freezer:'',safe:false,notes:''})
+  const [extra,setExtra]=useState('');const [tk,setTk]=useState('cooking');const [ti,setTi]=useState('');const [tt,setTt]=useState('')
+  async function load(){const {data}=await sb.functions.invoke('kitchen',{body:{action:'daily_load',date}});if(data&&data.ok){const d=data.day;setDay(d);setTemps(data.temps||[])
+    setO({fridge:d&&d.open_fridge!=null?d.open_fridge:'',freezer:d&&d.open_freezer!=null?d.open_freezer:'',safe:!!(d&&d.open_safe_methods),notes:(d&&d.open_notes)||''})
+    setC({fridge:d&&d.close_fridge!=null?d.close_fridge:'',freezer:d&&d.close_freezer!=null?d.close_freezer:'',safe:!!(d&&d.close_safe_methods),notes:(d&&d.close_notes)||''})
+    setExtra((d&&d.extra_checks)||'')}}
+  useEffect(()=>{load()},[date])
+  const catered=!!(day&&day.catered)
+  async function saveCheck(which){setBusy(true);const s=which==='daily_open'?o:c;const {data,error}=await sb.functions.invoke('kitchen',{body:{action:which,date,fridge:s.fridge,freezer:s.freezer,safe_methods:s.safe,notes:s.notes}});setBusy(false);if(error||(data&&data.error)){fire((data&&data.error)||'Error');return}fire('Saved');load()}
+  async function setCatered(v){const {data}=await sb.functions.invoke('kitchen',{body:{action:'daily_meta',date,catered:v}});if(data&&data.ok){fire(v?'Marked catered — checks not required':'Checks required');load()}}
+  async function saveExtra(){const {data}=await sb.functions.invoke('kitchen',{body:{action:'daily_meta',date,extra_checks:extra}});if(data&&data.ok)fire('Saved')}
+  async function addTemp(){if(!ti||tt===''){fire('Add an item and temperature');return}const {data,error}=await sb.functions.invoke('kitchen',{body:{action:'temp_add',date,kind:tk,item:ti,temp:tt}});if(error||(data&&data.error)){fire((data&&data.error)||'Error');return}setTi('');setTt('');load()}
+  async function delTemp(id){await sb.functions.invoke('kitchen',{body:{action:'temp_delete',id}});load()}
+  async function exportMonth(){const {data}=await sb.functions.invoke('kitchen',{body:{action:'month_export',month:date.slice(0,7)}});if(!data||!data.ok){fire('Export failed');return}
+    const rows=[['Kitchen daily diary — '+date.slice(0,7)],['Date','Catered','Open fridge','Open freezer','Open safe methods','Opened by','Close fridge','Close freezer','Close safe methods','Closed by','Notes']]
+    ;(data.days||[]).forEach(d=>rows.push([d.log_date,d.catered?'Yes':'',d.open_fridge??'',d.open_freezer??'',d.open_safe_methods?'Yes':'',d.open_by_name||'',d.close_fridge??'',d.close_freezer??'',d.close_safe_methods?'Yes':'',d.close_by_name||'',[d.open_notes,d.close_notes].filter(Boolean).join(' / ')]))
+    rows.push([]);rows.push(['Cooking / reheating temperatures']);rows.push(['Date','Type','Item','°C','Pass'])
+    ;(data.temps||[]).forEach(t=>rows.push([t.log_date,t.kind,t.item||'',t.temp_c,t.pass===true?'Pass':t.pass===false?'FAIL':'']))
+    const csv=rows.map(r=>r.map(x=>'"'+(x==null?'':x).toString().replace(/"/g,'""')+'"').join(',')).join(String.fromCharCode(10))
+    const url=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));const a=document.createElement('a');a.href=url;a.download='kitchen_diary_'+date.slice(0,7)+'.csv';a.click();URL.revokeObjectURL(url)}
+  const Check=(title,s,setS,which)=>html`<div class="card" style=${{padding:'12px 14px',marginBottom:10}}>
+    <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}><b>${title}</b>${day&&day[(which==='daily_open'?'open':'close')+'_by_name']?html`<span class="muted" style=${{fontSize:10}}>✓ ${day[(which==='daily_open'?'open':'close')+'_by_name']}</span>`:''}</div>
+    <div style=${{display:'flex',gap:8,flexWrap:'wrap'}}>
+      <div style=${{flex:1,minWidth:120}}><div class="lb" style=${{fontSize:11,fontWeight:700,marginBottom:3}}>Fridge °C</div><input class="in" type="number" step="0.1" value=${s.fridge} onInput=${e=>setS({...s,fridge:e.target.value})}/>${(()=>{const t=fridgeTag(s.fridge);return t?html`<span class="tag" style=${{background:t.bg,color:t.fg,marginTop:4,display:'inline-block'}}>${t.l}</span>`:''})()}</div>
+      <div style=${{flex:1,minWidth:120}}><div class="lb" style=${{fontSize:11,fontWeight:700,marginBottom:3}}>Freezer °C</div><input class="in" type="number" step="0.1" value=${s.freezer} onInput=${e=>setS({...s,freezer:e.target.value})}/>${(()=>{const t=freezerTag(s.freezer);return t?html`<span class="tag" style=${{background:t.bg,color:t.fg,marginTop:4,display:'inline-block'}}>${t.l}</span>`:''})()}</div>
+    </div>
+    <label style=${{display:'flex',gap:8,alignItems:'flex-start',marginTop:10,fontSize:12,cursor:'pointer'}}><input type="checkbox" checked=${s.safe} onChange=${e=>setS({...s,safe:e.target.checked})} style=${{marginTop:2}}/><span>Our safe methods were followed and effectively supervised.</span></label>
+    <textarea class="in" style=${{marginTop:8,minHeight:46,fontFamily:'inherit'}} placeholder="Any problems or changes — what did you do?" value=${s.notes} onInput=${e=>setS({...s,notes:e.target.value})}></textarea>
+    <button class="btn" style=${{marginTop:8}} disabled=${busy} onClick=${()=>saveCheck(which)}>${busy?'Saving…':'Save '+(which==='daily_open'?'opening':'closing')+' check'}</button>
+  </div>`
+  return html`<div>
+    <div style=${{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap',marginBottom:10}}>
+      <input class="in" type="date" style=${{width:'auto'}} value=${date} onInput=${e=>setDate(e.target.value)}/>
+      <button class="chip" onClick=${exportMonth}>📄 Month CSV</button>
+      <label style=${{display:'flex',gap:6,alignItems:'center',fontSize:12,marginLeft:'auto',cursor:'pointer'}}><input type="checkbox" checked=${catered} onChange=${e=>setCatered(e.target.checked)}/>Catered / no food prepared</label>
+    </div>
+    ${catered?html`<div class="card" style=${{padding:16,color:C.muted}}>Marked as catered / no food prepared today — kitchen checks are not required. Untick above if food is being prepared.</div>`:html`<div>
+      <div class="card" style=${{padding:'9px 12px',marginBottom:10,background:'#F7F4EC',border:'1px solid '+C.line,fontSize:11,color:'#2B3443'}}><b style=${{color:C.navy}}>Targets:</b> fridge 0–5°C (action &gt;8°C) · freezer ≤ −18°C · cooking/reheating core ≥ 75°C · hot-hold ≥ 63°C.</div>
+      ${Check('Opening checks (morning)',o,setO,'daily_open')}
+      ${Check('Closing checks (evening)',c,setC,'daily_close')}
+      <div class="card" style=${{padding:'12px 14px',marginBottom:10}}>
+        <b>Cooking &amp; reheating temperatures</b>
+        <div style=${{display:'flex',gap:6,flexWrap:'wrap',marginTop:8}}>
+          <select class="in" style=${{width:'auto'}} value=${tk} onChange=${e=>setTk(e.target.value)}><option value="cooking">Cooking</option><option value="reheating">Reheating</option><option value="hot_hold">Hot hold</option><option value="cold_hold">Cold hold</option></select>
+          <input class="in" style=${{flex:1,minWidth:120}} placeholder="Food item" value=${ti} onInput=${e=>setTi(e.target.value)}/>
+          <input class="in" type="number" step="0.1" style=${{width:90}} placeholder="°C" value=${tt} onInput=${e=>setTt(e.target.value)}/>
+          <button class="chip" style=${{background:C.navy,color:'#fff',borderColor:C.navy}} onClick=${addTemp}>Add</button></div>
+        <div style=${{marginTop:8}}>${temps.length===0?html`<div class="muted" style=${{fontSize:12}}>No temperatures logged yet today.</div>`:temps.map(t=>html`<div key=${t.id} style=${{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,padding:'6px 0',borderTop:'1px solid #EFECE4',fontSize:12}}>
+          <div><b>${t.item}</b> <span class="muted">· ${t.kind.replace('_',' ')} · ${t.temp_c}°C</span></div>
+          <div style=${{display:'flex',gap:6,alignItems:'center'}}>${t.pass===true?html`<span class="tag" style=${{background:'#E5EEE7',color:C.green}}>Pass</span>`:t.pass===false?html`<span class="tag" style=${{background:C.urgentSoft,color:C.urgent}}>FAIL</span>`:''}<button class="chip" style=${{padding:'2px 8px'}} onClick=${()=>delTemp(t.id)}>✕</button></div></div>`)}</div>
+      </div>
+      <div class="card" style=${{padding:'12px 14px'}}>
+        <b>Extra checks this week</b>
+        <textarea class="in" style=${{marginTop:8,minHeight:46,fontFamily:'inherit'}} placeholder="Any extra checks performed this week…" value=${extra} onInput=${e=>setExtra(e.target.value)} onBlur=${saveExtra}></textarea>
+      </div>
+    </div>`}
+  </div>`}
+
+function KitchenCleaning({profile,fire}){
+  const [freq,setFreq]=useState('daily');const [date,setDate]=useState(kToday());const [tasks,setTasks]=useState(null)
+  const isAdmin=profile.role==='admin';const [nt,setNt]=useState('')
+  async function load(){const {data}=await sb.functions.invoke('kitchen',{body:{action:'clean_load',frequency:freq,date}});setTasks((data&&data.tasks)||[])}
+  useEffect(()=>{load()},[freq,date])
+  async function toggle(id,done){await sb.functions.invoke('kitchen',{body:{action:'clean_toggle',task_id:id,date,done}});load()}
+  async function markDone(id){await sb.functions.invoke('kitchen',{body:{action:'clean_toggle',task_id:id,date:kToday(),done:true}});fire('Marked done today');load()}
+  async function addTask(){if(!nt.trim())return;const {data}=await sb.functions.invoke('kitchen',{body:{action:'clean_add',title:nt,frequency:freq}});if(data&&data.ok){setNt('');load()}else fire((data&&data.error)||'Error')}
+  async function rm(id){if(!window.confirm('Remove this task from the schedule?'))return;await sb.functions.invoke('kitchen',{body:{action:'clean_remove',id}});load()}
+  const fmt=d=>d?new Date(d+'T00:00:00').toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}):'—'
+  return html`<div>
+    <div style=${{display:'flex',gap:6,marginBottom:10,flexWrap:'wrap'}}>${[['daily','Daily'],['weekly','Weekly deep clean'],['termly','Termly deep clean']].map(([k,l])=>html`<button key=${k} class="chip ${freq===k?'on':''}" onClick=${()=>setFreq(k)}>${l}</button>`)}</div>
+    ${freq==='daily'&&html`<div style=${{marginBottom:10}}><input class="in" type="date" style=${{width:'auto'}} value=${date} onInput=${e=>setDate(e.target.value)}/></div>`}
+    ${tasks===null?html`<div class="muted">Loading…</div>`:tasks.map(t=>html`<div key=${t.id} class="card" style=${{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,padding:'9px 12px',marginBottom:6}}>
+      <div style=${{minWidth:0}}><div style=${{fontSize:13}}>${t.title}</div><div class="muted" style=${{fontSize:10.5}}>${t.area||''}${freq!=='daily'?' · last done: '+fmt(t.last_done):''}</div></div>
+      ${freq==='daily'?html`<label style=${{cursor:'pointer',flexShrink:0}}><input type="checkbox" checked=${!!t.done} onChange=${e=>toggle(t.id,e.target.checked)} style=${{transform:'scale(1.3)'}}/></label>`:html`<div style=${{display:'flex',gap:6,flexShrink:0}}><button class="chip" style=${{background:C.navy,color:'#fff',borderColor:C.navy}} onClick=${()=>markDone(t.id)}>Mark done</button>${isAdmin?html`<button class="chip" onClick=${()=>rm(t.id)}>✕</button>`:''}</div>`}
+    </div>`)}
+    ${isAdmin&&html`<div style=${{display:'flex',gap:6,marginTop:10}}><input class="in" style=${{flex:1}} placeholder=${'Add a '+freq+' task…'} value=${nt} onInput=${e=>setNt(e.target.value)}/><button class="chip" onClick=${addTask}>Add</button></div>`}
+  </div>`}
+
+function KitchenRecipes({profile,fire}){
+  const [rows,setRows]=useState(null);const [ed,setEd]=useState(null)
+  async function load(){const {data}=await sb.functions.invoke('kitchen',{body:{action:'recipes_list'}});setRows((data&&data.rows)||[])}
+  useEffect(()=>{load()},[])
+  async function save(){if(!ed.name){fire('Name required');return}const {data}=await sb.functions.invoke('kitchen',{body:{action:'recipe_save',...ed}});if(data&&data.ok){setEd(null);load();fire('Saved')}else fire((data&&data.error)||'Error')}
+  async function del(id){if(!window.confirm('Delete this recipe?'))return;await sb.functions.invoke('kitchen',{body:{action:'recipe_delete',id}});setEd(null);load()}
+  if(ed)return html`<div>
+    <button class="chip" onClick=${()=>setEd(null)}>← Recipes</button>
+    <div class="card" style=${{padding:'12px 14px',marginTop:10}}>
+      <input class="in" placeholder="Dish name" value=${ed.name||''} onInput=${e=>setEd({...ed,name:e.target.value})}/>
+      <div style=${{display:'flex',gap:8,marginTop:8}}><input class="in" placeholder="Category (e.g. main)" value=${ed.category||''} onInput=${e=>setEd({...ed,category:e.target.value})}/><input class="in" placeholder="Serves" value=${ed.serves||''} onInput=${e=>setEd({...ed,serves:e.target.value})}/></div>
+      <input class="in" style=${{marginTop:8}} placeholder="Allergens present (e.g. gluten, milk, nuts)" value=${ed.allergens||''} onInput=${e=>setEd({...ed,allergens:e.target.value})}/>
+      <textarea class="in" style=${{marginTop:8,minHeight:70,fontFamily:'inherit'}} placeholder="Ingredients (one per line)" value=${ed.ingredients||''} onInput=${e=>setEd({...ed,ingredients:e.target.value})}></textarea>
+      <textarea class="in" style=${{marginTop:8,minHeight:90,fontFamily:'inherit'}} placeholder="Method" value=${ed.method||''} onInput=${e=>setEd({...ed,method:e.target.value})}></textarea>
+      <div style=${{display:'flex',gap:8,marginTop:10}}><button class="btn" style=${{flex:1}} onClick=${save}>Save recipe</button>${ed.id?html`<button class="btn ghost" style=${{width:'auto'}} onClick=${()=>del(ed.id)}>Delete</button>`:''}</div>
+    </div></div>`
+  return html`<div>
+    <button class="btn gold" style=${{marginBottom:10}} onClick=${()=>setEd({})}>+ New recipe</button>
+    ${rows===null?html`<div class="muted">Loading…</div>`:rows.length===0?html`<div class="card muted" style=${{padding:16}}>No recipes yet.</div>`:rows.map(r=>html`<div key=${r.id} class="card" style=${{padding:'10px 12px',marginBottom:6,cursor:'pointer'}} onClick=${()=>setEd(r)}>
+      <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',gap:6}}><b>${r.name}</b><span class="muted" style=${{fontSize:11}}>${r.category||''}</span></div>
+      ${r.allergens?html`<div style=${{fontSize:11,color:C.urgent,marginTop:2}}>Allergens: ${r.allergens}</div>`:''}</div>`)}
+  </div>`}
+
+function KitchenAllergies({profile,fire}){
+  const [rows,setRows]=useState(null);const [q,setQ]=useState('');const [ed,setEd]=useState(null)
+  async function load(){const {data}=await sb.functions.invoke('kitchen',{body:{action:'diet_list'}});setRows((data&&data.rows)||[])}
+  useEffect(()=>{load()},[])
+  async function save(){const {data}=await sb.functions.invoke('kitchen',{body:{action:'diet_save',pupil_id:ed.pupil_id,allergies:ed.allergies,dietary:ed.dietary,epipen:ed.epipen,notes:ed.notes}});if(data&&data.ok){setEd(null);load();fire('Saved')}else fire((data&&data.error)||'Error')}
+  const list=(rows||[]).filter(r=>r.name.toLowerCase().includes(q.toLowerCase()))
+  return html`<div>
+    <div class="card" style=${{padding:'8px 11px',marginBottom:10,background:'#F5E4E1',border:'1px solid '+C.line,borderLeft:'4px solid '+C.urgent,fontSize:11,color:'#2B3443'}}>Confidential health information — for kitchen &amp; catering use only.</div>
+    <input class="in" placeholder="Search pupils…" value=${q} onInput=${e=>setQ(e.target.value)} style=${{marginBottom:10}}/>
+    ${rows===null?html`<div class="muted">Loading…</div>`:list.map(r=>html`<div key=${r.pupil_id} class="card" style=${{padding:'9px 12px',marginBottom:6,cursor:'pointer'}} onClick=${()=>setEd({...r})}>
+      <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',gap:6}}><div style=${{minWidth:0}}><b>${r.name}</b> <span class="muted" style=${{fontSize:11}}>${r.academic_year||''}</span></div>
+        <div style=${{display:'flex',gap:4,flexShrink:0}}>${r.epipen?html`<span class="tag" style=${{background:C.urgent,color:'#fff'}}>EpiPen</span>`:''}${r.allergies?html`<span class="tag" style=${{background:C.urgentSoft,color:C.urgent}}>Allergy</span>`:r.dietary?html`<span class="tag" style=${{background:'#EEF',color:C.navy}}>Diet</span>`:html`<span class="muted" style=${{fontSize:11}}>—</span>`}</div></div>
+      ${r.allergies?html`<div style=${{fontSize:11.5,marginTop:3}}><b style=${{color:C.urgent}}>Allergies:</b> ${r.allergies}</div>`:''}
+      ${r.dietary?html`<div style=${{fontSize:11.5,marginTop:1}}><b>Diet:</b> ${r.dietary}</div>`:''}</div>`)}
+    ${ed&&html`<div onClick=${()=>setEd(null)} style=${{position:'fixed',inset:0,background:'rgba(10,15,25,.55)',display:'flex',alignItems:'flex-start',justifyContent:'center',padding:'24px 12px',zIndex:60,overflow:'auto'}}>
+      <div onClick=${e=>e.stopPropagation()} class="card" style=${{maxWidth:460,width:'100%',padding:'18px 20px'}}>
+        <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}><b>${ed.name}</b><button class="chip" onClick=${()=>setEd(null)}>Close</button></div>
+        <div class="lb" style=${{fontSize:11,fontWeight:700,marginBottom:3}}>Allergies</div>
+        <textarea class="in" style=${{minHeight:46,fontFamily:'inherit'}} placeholder="e.g. peanuts, sesame…" value=${ed.allergies||''} onInput=${e=>setEd({...ed,allergies:e.target.value})}></textarea>
+        <div class="lb" style=${{fontSize:11,fontWeight:700,margin:'8px 0 3px'}}>Dietary needs</div>
+        <input class="in" placeholder="e.g. vegetarian, no beef…" value=${ed.dietary||''} onInput=${e=>setEd({...ed,dietary:e.target.value})}/>
+        <label style=${{display:'flex',gap:8,alignItems:'center',margin:'10px 0',fontSize:13,cursor:'pointer'}}><input type="checkbox" checked=${!!ed.epipen} onChange=${e=>setEd({...ed,epipen:e.target.checked})}/>Carries an EpiPen / risk of anaphylaxis</label>
+        <textarea class="in" style=${{minHeight:40,fontFamily:'inherit'}} placeholder="Notes" value=${ed.notes||''} onInput=${e=>setEd({...ed,notes:e.target.value})}></textarea>
+        <button class="btn" style=${{marginTop:10}} onClick=${save}>Save</button>
+      </div></div>`}
+  </div>`}
+
+function KitchenCoshh({profile,fire}){
+  const [rows,setRows]=useState(null);const [ed,setEd]=useState(null)
+  async function load(){const {data}=await sb.functions.invoke('kitchen',{body:{action:'coshh_list'}});setRows((data&&data.rows)||[])}
+  useEffect(()=>{load()},[])
+  async function save(){if(!ed.product){fire('Product name required');return}const {data}=await sb.functions.invoke('kitchen',{body:{action:'coshh_save',...ed}});if(data&&data.ok){setEd(null);load();fire('Saved')}else fire((data&&data.error)||'Error')}
+  async function del(id){if(!window.confirm('Remove this product?'))return;await sb.functions.invoke('kitchen',{body:{action:'coshh_delete',id}});setEd(null);load()}
+  if(ed)return html`<div><button class="chip" onClick=${()=>setEd(null)}>← COSHH register</button>
+    <div class="card" style=${{padding:'12px 14px',marginTop:10}}>
+      <input class="in" placeholder="Product name" value=${ed.product||''} onInput=${e=>setEd({...ed,product:e.target.value})}/>
+      <input class="in" style=${{marginTop:8}} placeholder="Used for" value=${ed.use_for||''} onInput=${e=>setEd({...ed,use_for:e.target.value})}/>
+      <input class="in" style=${{marginTop:8}} placeholder="Hazards" value=${ed.hazards||''} onInput=${e=>setEd({...ed,hazards:e.target.value})}/>
+      <textarea class="in" style=${{marginTop:8,minHeight:50,fontFamily:'inherit'}} placeholder="Precautions / safe use" value=${ed.precautions||''} onInput=${e=>setEd({...ed,precautions:e.target.value})}></textarea>
+      <input class="in" style=${{marginTop:8}} placeholder="Storage location" value=${ed.storage_location||''} onInput=${e=>setEd({...ed,storage_location:e.target.value})}/>
+      <div style=${{display:'flex',gap:8,marginTop:10}}><button class="btn" style=${{flex:1}} onClick=${save}>Save</button>${ed.id?html`<button class="btn ghost" style=${{width:'auto'}} onClick=${()=>del(ed.id)}>Delete</button>`:''}</div>
+    </div></div>`
+  return html`<div>
+    <button class="btn gold" style=${{marginBottom:10}} onClick=${()=>setEd({})}>+ Add product</button>
+    ${rows===null?html`<div class="muted">Loading…</div>`:rows.length===0?html`<div class="card muted" style=${{padding:16}}>No products yet.</div>`:rows.map(r=>html`<div key=${r.id} class="card" style=${{padding:'10px 12px',marginBottom:6,cursor:'pointer'}} onClick=${()=>setEd(r)}>
+      <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',gap:6}}><b>${r.product}</b><span class="muted" style=${{fontSize:11}}>${r.storage_location||''}</span></div>
+      ${r.use_for?html`<div class="muted" style=${{fontSize:11,marginTop:2}}>${r.use_for}</div>`:''}
+      ${r.hazards?html`<div style=${{fontSize:11,color:C.urgent,marginTop:2}}>⚠ ${r.hazards}</div>`:''}</div>`)}
+  </div>`}
+
+function KitchenIncidents({profile,fire}){
+  const [rows,setRows]=useState(null);const [add,setAdd]=useState(null)
+  async function load(){const {data}=await sb.functions.invoke('kitchen',{body:{action:'incident_list'}});setRows((data&&data.rows)||[])}
+  useEffect(()=>{load()},[])
+  async function save(){if(!add.what_happened){fire('Describe what happened');return}const {data}=await sb.functions.invoke('kitchen',{body:{action:'incident_add',...add}});if(data&&data.ok){setAdd(null);load();fire('Logged')}else fire((data&&data.error)||'Error')}
+  const fmt=d=>new Date(d+'T00:00:00').toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'})
+  return html`<div>
+    ${add?html`<div class="card" style=${{padding:'12px 14px',marginBottom:10}}>
+      <div style=${{display:'flex',gap:8}}><input class="in" type="date" style=${{width:'auto'}} value=${add.incident_date||kToday()} onInput=${e=>setAdd({...add,incident_date:e.target.value})}/>
+        <select class="in" style=${{flex:1}} value=${add.kind||'accident'} onChange=${e=>setAdd({...add,kind:e.target.value})}><option value="accident">Accident / injury</option><option value="food_safety">Food safety</option><option value="equipment">Equipment</option><option value="other">Other</option></select></div>
+      <textarea class="in" style=${{marginTop:8,minHeight:56,fontFamily:'inherit'}} placeholder="What happened?" value=${add.what_happened||''} onInput=${e=>setAdd({...add,what_happened:e.target.value})}></textarea>
+      <textarea class="in" style=${{marginTop:8,minHeight:46,fontFamily:'inherit'}} placeholder="Action taken" value=${add.action_taken||''} onInput=${e=>setAdd({...add,action_taken:e.target.value})}></textarea>
+      <div style=${{display:'flex',gap:8,marginTop:10}}><button class="btn" style=${{flex:1}} onClick=${save}>Log it</button><button class="btn ghost" style=${{width:'auto'}} onClick=${()=>setAdd(null)}>Cancel</button></div>
+    </div>`:html`<button class="btn gold" style=${{marginBottom:10}} onClick=${()=>setAdd({})}>+ Log incident</button>`}
+    ${rows===null?html`<div class="muted">Loading…</div>`:rows.length===0?html`<div class="card muted" style=${{padding:16}}>No incidents logged.</div>`:rows.map(r=>html`<div key=${r.id} class="card" style=${{padding:'10px 12px',marginBottom:6}}>
+      <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',gap:6}}><b style=${{textTransform:'capitalize'}}>${(r.kind||'').replace('_',' ')}</b><span class="muted" style=${{fontSize:11}}>${fmt(r.incident_date)}</span></div>
+      <div style=${{fontSize:12,marginTop:2}}>${r.what_happened||''}</div>
+      ${r.action_taken?html`<div class="muted" style=${{fontSize:11,marginTop:2}}>Action: ${r.action_taken}</div>`:''}
+      <div class="muted" style=${{fontSize:10,marginTop:2}}>${r.logged_by_name||''}</div></div>`)}
+  </div>`}
+
 function PrivacyNotice({onClose}){
   const secs=[
     ['Who we are','Al Jamiatul Islamiyah (Bolton Darul Uloom) is the data controller for the information held in the Parent Hub.'],
@@ -969,7 +1165,7 @@ function DataProtection({profile}){
 function Dashboard({profile,onSignOut}){
   const [pupils,setPupils]=useState(null);const [classes,setClasses]=useState([]);const [groups,setGroups]=useState([])
   const [anns,setAnns]=useState([]);const [tab,setTab]=useState('overview');const [q,setQ]=useState('');const [toast,setToast]=useState('')
-  const [editPupil,setEditPupil]=useState(null);const canManage=profile.role==='admin';const canIncident=canReportIncident(profile);const canBoarding=canBoardingCheck(profile);const canSup=canSupervisor(profile);const canMedFire=canBoardTeam(profile)
+  const [editPupil,setEditPupil]=useState(null);const canManage=profile.role==='admin';const canIncident=canReportIncident(profile);const canBoarding=canBoardingCheck(profile);const canSup=canSupervisor(profile);const canMedFire=canBoardTeam(profile);const canKit=canKitchen(profile)
   const fire=m=>{setToast(m);setTimeout(()=>setToast(''),3200)}
   async function load(){const [p,c,g,a]=await Promise.all([
     sb.from('pupils').select('*').order('last_name'),
@@ -992,8 +1188,8 @@ function Dashboard({profile,onSignOut}){
         <div style=${{color:'#AEBAD0',fontSize:10}}>Al Jamiatul Islamiyah</div></div></div>
       <button onClick=${onSignOut} style=${{background:'transparent',border:'1px solid rgba(255,255,255,.3)',color:'#fff',borderRadius:10,padding:'6px 10px',fontSize:12,cursor:'pointer'}}>Sign out</button></div>
     <div style=${{height:3,background:`linear-gradient(90deg,${C.gold},${C.goldSoft})`}}></div>
-    <div style=${{padding:'8px 16px 0',display:'flex',gap:8,flexWrap:'wrap'}}>${['overview','pupils','attendance','league',...(canManage?['engagement']:[]),'praise','detentions','behaviour','safeguarding',...(canMedFire?['medical','firedrills']:[]),...(canIncident?['incidents']:[]),...(canBoarding?['boarding']:[]),...(canSup?['supervisor']:[]),...(canManage?['dataprotection']:[]),'announce','inbox'].map(t=>html`
-      <button key=${t} onClick=${()=>setTab(t)} class="chip ${tab===t?'on':''}">${t==='overview'?'Overview':t==='pupils'?'Pupils':t==='attendance'?'Attendance':t==='league'?'League':t==='engagement'?'Engagement':t==='praise'?'Praise':t==='detentions'?'Detentions':t==='behaviour'?'Behaviour':t==='safeguarding'?'Safeguarding':t==='medical'?'Medical':t==='firedrills'?'Fire drills':t==='incidents'?'Injuries':t==='boarding'?'Boarding':t==='supervisor'?'Supervisor':t==='dataprotection'?'Data protection':t==='announce'?'Announce':'Inbox'}</button>`)}</div>
+    <div style=${{padding:'8px 16px 0',display:'flex',gap:8,flexWrap:'wrap'}}>${['overview','pupils','attendance','league',...(canManage?['engagement']:[]),'praise','detentions','behaviour','safeguarding',...(canMedFire?['medical','firedrills']:[]),...(canIncident?['incidents']:[]),...(canBoarding?['boarding']:[]),...(canSup?['supervisor']:[]),...(canKit?['kitchen']:[]),...(canManage?['dataprotection']:[]),'announce','inbox'].map(t=>html`
+      <button key=${t} onClick=${()=>setTab(t)} class="chip ${tab===t?'on':''}">${t==='overview'?'Overview':t==='pupils'?'Pupils':t==='attendance'?'Attendance':t==='league'?'League':t==='engagement'?'Engagement':t==='praise'?'Praise':t==='detentions'?'Detentions':t==='behaviour'?'Behaviour':t==='safeguarding'?'Safeguarding':t==='medical'?'Medical':t==='firedrills'?'Fire drills':t==='incidents'?'Injuries':t==='boarding'?'Boarding':t==='supervisor'?'Supervisor':t==='kitchen'?'Kitchen':t==='dataprotection'?'Data protection':t==='announce'?'Announce':'Inbox'}</button>`)}</div>
     <div style=${{padding:16}}>
       ${pupils===null&&html`<div class="muted">Loading live data…</div>`}
       ${tab==='overview'&&pupils&&html`<div>
@@ -1034,6 +1230,7 @@ function Dashboard({profile,onSignOut}){
       ${tab==='incidents'&&canIncident&&html`<${Incidents} profile=${profile}/>`}
       ${tab==='boarding'&&canBoarding&&html`<${Boarding} profile=${profile}/>`}
       ${tab==='supervisor'&&canSup&&html`<${Supervisor} profile=${profile}/>`}
+      ${tab==='kitchen'&&canKit&&html`<${Kitchen} profile=${profile}/>`}
       ${tab==='dataprotection'&&canManage&&html`<${DataProtection} profile=${profile}/>`}
       ${editPupil&&html`<${PupilEditor} pupil=${editPupil} classes=${classes} onClose=${()=>setEditPupil(null)} onSaved=${m=>{setEditPupil(null);fire(m);load()}}/>`}
     </div>
