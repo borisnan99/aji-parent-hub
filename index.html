@@ -1305,6 +1305,23 @@ function Attendance({profile}){
   async function setContact(id,method){
     setRec(r=>({...r,[id]:{...(r[id]||{}),status:'absent',contact:method}}))
     await sb.from('attendance').upsert({pupil_id:id,on_date:date,phase:session,status:'absent',contact_method:method||null,logged_by:profile.id},{onConflict:'pupil_id,on_date,phase'})}
+  // Weekend leave: a boarder home for the weekend is authorised-away on the boarding (evening+night)
+  // registers from Friday night through Saturday night; back on the Sunday evening register.
+  function weekendSlots(dateStr){
+    const d=new Date(dateStr+'T00:00:00'),dow=d.getDay(),fri=new Date(d)
+    if(dow===6)fri.setDate(d.getDate()-1);else if(dow===0)fri.setDate(d.getDate()-2);else if(dow!==5)fri.setDate(d.getDate()+((5-dow+7)%7))
+    const sat=new Date(fri);sat.setDate(fri.getDate()+1)
+    const iso=x=>{const z=new Date(x.getTime()-x.getTimezoneOffset()*60000);return z.toISOString().slice(0,10)}
+    return [{on_date:iso(fri),phase:'night'},{on_date:iso(sat),phase:'evening'},{on_date:iso(sat),phase:'night'}]}
+  async function applyWeekendLeave(id){
+    const method=(rec[id]&&rec[id].contact)||null
+    const rows=weekendSlots(date).map(s=>({pupil_id:id,on_date:s.on_date,phase:s.phase,status:'absent',absence_code:'WL',contact_method:method,note:'Home for the weekend',logged_by:profile.id}))
+    const {error}=await sb.from('attendance').upsert(rows,{onConflict:'pupil_id,on_date,phase'})
+    if(error){fire('Could not apply: '+error.message);return}
+    setRec(r=>({...r,[id]:{...(r[id]||{}),weekend:true}}));fire('Home for the weekend — Fri night, Sat evening & night');loadRecords()}
+  async function clearWeekendLeave(id){
+    for(const s of weekendSlots(date)){await sb.from('attendance').upsert({pupil_id:id,on_date:s.on_date,phase:s.phase,status:'present',absence_code:null,note:null,logged_by:profile.id},{onConflict:'pupil_id,on_date,phase'})}
+    setRec(r=>({...r,[id]:{...(r[id]||{}),weekend:false}}));fire('Weekend leave cleared');loadRecords()}
   async function exportCsv(){
     if(!current){fire('Open a class register first');return}
     const d0=new Date(date+'T00:00:00'),y=d0.getFullYear(),m=d0.getMonth()
@@ -1380,7 +1397,13 @@ function Attendance({profile}){
             <option value="In person">In person</option>
             <option value="No contact yet">No contact yet</option>
           </select>
-          <textarea class="in" style=${{marginTop:8,padding:'8px',minHeight:58,resize:'vertical',fontFamily:'inherit'}} placeholder="Add a note on the situation — e.g. illness, and what the parents have said…" value=${(rec[p.id]&&rec[p.id].note)||''} onInput=${e=>onNote(p.id,e.target.value)} onBlur=${e=>saveNote(p.id,e.target.value)}></textarea></div>`)}
+          <textarea class="in" style=${{marginTop:8,padding:'8px',minHeight:58,resize:'vertical',fontFamily:'inherit'}} placeholder="Add a note on the situation — e.g. illness, and what the parents have said…" value=${(rec[p.id]&&rec[p.id].note)||''} onInput=${e=>onNote(p.id,e.target.value)} onBlur=${e=>saveNote(p.id,e.target.value)}></textarea>
+          ${(session==='evening'||session==='night')&&rec[p.id]&&rec[p.id].code==='WL'?html`<div style=${{marginTop:8,background:'#FAF8F3',border:'1px solid '+C.line,borderLeft:'4px solid '+C.gold,borderRadius:8,padding:'8px 10px'}}>
+            <div style=${{fontSize:12,fontWeight:700,color:C.navy}}>🏠 Home for the weekend</div>
+            <div class="muted" style=${{fontSize:10.5,lineHeight:1.45,margin:'3px 0 7px'}}>Set how the parent gave permission above, then apply. This marks the boarder authorised-away on <b>Friday night, Saturday evening &amp; Saturday night</b> — back on the <b>Sunday evening</b> register. You only need to do this once.</div>
+            <div style=${{display:'flex',gap:8,flexWrap:'wrap'}}>
+              <button class="chip" style=${{background:C.navy,color:'#fff',borderColor:C.navy}} onClick=${()=>applyWeekendLeave(p.id)}>Apply across the weekend</button>
+              <button class="chip" onClick=${()=>clearWeekendLeave(p.id)}>Cancel leave</button></div></div>`:''}</div>`)}
       </div>`}
     </div>`}
     </div>`}
