@@ -21,6 +21,10 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     const action = body.action || "list";
 
+    // Accountability: record access to / changes of safeguarding records (no concern details are stored in the log).
+    const audit = (a: string, entity_id?: string | null, metadata?: any) =>
+      svc.from("audit_log").insert({ actor_id: user.id, action: a, entity_type: "safeguarding", entity_id: entity_id ?? null, metadata: metadata ?? null }).then(() => {}, () => {});
+
     async function decorate(rows: any[]) {
       const pids = [...new Set(rows.map((r) => r.about_pupil_id).filter(Boolean))];
       const pm: Record<string, any> = {};
@@ -54,6 +58,7 @@ Deno.serve(async (req) => {
           for (const s of subs ?? []) { try { await webpush.sendNotification({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, payload); } catch (e: any) { if (e?.statusCode === 404 || e?.statusCode === 410) await svc.from("push_subscriptions").delete().eq("endpoint", s.endpoint); } }
         }
       } catch { /* notify best-effort */ }
+      await audit("safeguarding.report", row.id, { category: (body.category || "").trim() || null });
       return json({ ok: true, id: row.id });
     }
 
@@ -61,7 +66,7 @@ Deno.serve(async (req) => {
       const { data: mineRows } = await svc.from("safeguarding_concerns").select("*").eq("reported_by", user.id).order("created_at", { ascending: false }).limit(20);
       const mine = await decorate(mineRows ?? []);
       let concerns: any[] = [];
-      if (canView) { const { data } = await svc.from("safeguarding_concerns").select("*").order("created_at", { ascending: false }).limit(200); concerns = await decorate(data ?? []); }
+      if (canView) { const { data } = await svc.from("safeguarding_concerns").select("*").order("created_at", { ascending: false }).limit(200); concerns = await decorate(data ?? []); await audit("safeguarding.view_log", null, { count: concerns.length }); }
       return json({ ok: true, can_view: canView, concerns, mine });
     }
 
@@ -70,7 +75,17 @@ Deno.serve(async (req) => {
       if (!body.id || !["open", "actioned", "closed"].includes(body.status)) return json({ error: "id and status required" }, 400);
       const { error } = await svc.from("safeguarding_concerns").update({ status: body.status, dsl_notes: (body.dsl_notes || "").trim() || null, actioned_by: user.id, actioned_at: new Date().toISOString() }).eq("id", body.id);
       if (error) return json({ error: error.message }, 500);
+      await audit("safeguarding.action", body.id, { status: body.status });
       return json({ ok: true });
+    }
+
+    if (action === "audit") {
+      if (!canView) return json({ error: "not permitted" }, 403);
+      const { data: rows } = await svc.from("audit_log").select("*").eq("entity_type", "safeguarding").order("created_at", { ascending: false }).limit(100);
+      const ids = [...new Set((rows ?? []).map((r: any) => r.actor_id).filter(Boolean))];
+      const um: Record<string, string> = {};
+      if (ids.length) { const { data } = await svc.from("profiles").select("id,full_name").in("id", ids); (data ?? []).forEach((u: any) => (um[u.id] = u.full_name)); }
+      return json({ ok: true, rows: (rows ?? []).map((r: any) => ({ ...r, actor_name: um[r.actor_id] || "—" })) });
     }
 
     return json({ error: "unknown action" }, 400);

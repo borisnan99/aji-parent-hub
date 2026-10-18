@@ -902,6 +902,70 @@ function Medical({profile}){
     ${toast&&html`<div style=${{position:'fixed',left:'50%',bottom:24,transform:'translateX(-50%)',background:'#0E1D38',color:'#fff',padding:'10px 16px',borderRadius:999,fontSize:14,maxWidth:'90%',textAlign:'center'}}>${toast}</div>`}
   </div>`}
 
+function PrivacyNotice({onClose}){
+  const secs=[
+    ['Who we are','Al Jamiatul Islamiyah (Bolton Darul Uloom) is the data controller for the information held in the Parent Hub.'],
+    ['What we hold',"Your contact details and your child's name, year group and boarding status; attendance; behaviour and praise points; welfare, safeguarding, medical/medication and accident records; and messages you send the school."],
+    ['Why we hold it, and our lawful basis',"To educate and care for your child and to run the boarding house. We rely on our public task and legal obligations; for safeguarding and urgent medical care we also rely on protecting a person's vital interests. Health and safeguarding information is handled only to meet our safeguarding and health duties."],
+    ['Who can see it','Only authorised staff, each limited to what their role requires. Safeguarding records are restricted to the Designated Safeguarding Lead and deputies, and medical records to the welfare team. Access to these records is logged.'],
+    ['Who we share it with','Trusted providers who run the system for us under contract (secure hosting, email and notifications), and — where we are required to — other agencies such as the local authority, NHS or police to keep a child safe.'],
+    ['Where it is kept','Securely within the UK/EU, encrypted in transit and at rest.'],
+    ['How long we keep it','Only as long as necessary. Routine records such as attendance are kept for a few years; safeguarding and medical records are kept longer, as the law requires.'],
+    ['Your rights','You can ask to see your information, have it corrected, or raise a concern — contact the school office or our Data Protection Officer. You may also complain to the Information Commissioner (ico.org.uk).']
+  ]
+  return html`<div onClick=${onClose} style=${{position:'fixed',inset:0,background:'rgba(10,15,25,.55)',display:'flex',alignItems:'flex-start',justifyContent:'center',padding:'24px 12px',zIndex:60,overflow:'auto'}}>
+    <div onClick=${e=>e.stopPropagation()} class="card" style=${{maxWidth:580,width:'100%',padding:'20px 22px'}}>
+      <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+        <h2 class="serif" style=${{color:C.navy,margin:0}}>Privacy notice</h2>
+        <button class="chip" onClick=${onClose}>Close</button></div>
+      <p class="muted" style=${{fontSize:12,marginTop:4}}>Al Jamiatul Islamiyah (Bolton Darul Uloom) — how we use your family's information, under the UK GDPR and the Data Protection Act 2018.</p>
+      ${secs.map(([h,b])=>html`<div key=${h} style=${{marginTop:12}}><div class="serif" style=${{color:C.navy,fontSize:14,fontWeight:700}}>${h}</div><div style=${{fontSize:13,lineHeight:1.5,marginTop:2}}>${b}</div></div>`)}
+    </div></div>`}
+
+function PrivacyFooter({staff}){
+  const [open,setOpen]=useState(false)
+  return html`<div style=${{padding:'16px 16px 26px',textAlign:'center'}}>
+    <div class="muted" style=${{fontSize:11,lineHeight:1.5,maxWidth:460,margin:'0 auto'}}>${staff?"Confidential. Handle all pupil and family information under the school's Data Protection Policy. Access to safeguarding and medical records is logged.":"Your information is held securely and used only to support your child's education and welfare."}</div>
+    <button onClick=${()=>setOpen(true)} style=${{background:'none',border:'none',color:C.navy,textDecoration:'underline',fontSize:12,cursor:'pointer',marginTop:5}}>Privacy & data protection</button>
+    ${open&&html`<${PrivacyNotice} onClose=${()=>setOpen(false)}/>`}
+  </div>`}
+
+function DataProtection({profile}){
+  const [rep,setRep]=useState(null);const [log,setLog]=useState(null);const [busy,setBusy]=useState('');const [toast,setToast]=useState('')
+  const fire=m=>{setToast(m);setTimeout(()=>setToast(''),3200)}
+  async function runReport(){setBusy('rep');const {data,error}=await sb.functions.invoke('data-admin',{body:{action:'retention_report'}});setBusy('');if(error||(data&&data.error)){fire((data&&data.error)||'Error');return}setRep(data.report||[])}
+  async function loadLog(){setBusy('log');const {data,error}=await sb.functions.invoke('data-admin',{body:{action:'audit_recent'}});setBusy('');if(error||(data&&data.error)){fire((data&&data.error)||'Error');return}setLog(data.rows||[])}
+  async function purge(){const n=(rep||[]).filter(r=>r.mode==='auto').reduce((s,r)=>s+(r.due||0),0)
+    if(!window.confirm('Permanently delete '+n+' routine record(s) past their retention period — attendance, boarding and supervisor checks over 3 years?\n\nSafeguarding, medical, behaviour and accident records are never deleted here.'))return
+    setBusy('purge');const {data,error}=await sb.functions.invoke('data-admin',{body:{action:'retention_purge',confirm:true}});setBusy('')
+    if(error||(data&&data.error)){fire((data&&data.error)||'Error');return}const p=data.purged||{};fire('Deleted — '+Object.entries(p).map(([k,v])=>k.replace(/_/g,' ')+': '+v).join(', '));runReport()}
+  useEffect(()=>{runReport()},[])
+  const tagFor=m=>m==='auto'?{t:'Auto-delete',bg:C.green,fg:'#fff'}:m==='manual'?{t:'On request',bg:C.goldSoft,fg:C.navy}:{t:'Review only',bg:'#EEF',fg:C.navy}
+  const canPurge=(rep||[]).some(r=>r.mode==='auto'&&r.due>0)
+  return html`<div>
+    <h2 class="serif" style=${{color:C.navy,margin:'2px 0 2px'}}>Data protection</h2>
+    <p class="muted" style=${{fontSize:12,marginTop:0}}>Retention monitoring and the access log for sensitive records. Leadership / DPO only.</p>
+    <div class="card" style=${{padding:'12px 14px',marginBottom:12}}>
+      <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}}><b>Data retention</b>
+        <button class="chip" onClick=${runReport} disabled=${busy==='rep'}>${busy==='rep'?'Checking…':'Re-check'}</button></div>
+      ${rep===null?html`<div class="muted">Loading…</div>`:html`<div>
+        ${rep.map(r=>{const tg=tagFor(r.mode);return html`<div key=${r.category} style=${{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,padding:'7px 0',borderTop:'1px solid #EFECE4'}}>
+          <div style=${{minWidth:0}}><div style=${{fontSize:13}}>${r.category}</div><div class="muted" style=${{fontSize:11}}>Keep: ${r.policy}</div></div>
+          <div style=${{display:'flex',alignItems:'center',gap:6,flexShrink:0}}>${r.due>0?html`<span class="tag" style=${{background:C.urgentSoft,color:C.urgent}}>${r.due} due</span>`:html`<span class="muted" style=${{fontSize:11}}>none</span>`}<span class="tag" style=${{background:tg.bg,color:tg.fg}}>${tg.t}</span></div></div>`})}
+        <div style=${{marginTop:12}}><button class="btn" style=${{background:canPurge?C.urgent:'#C9BBB8',color:'#fff'}} onClick=${purge} disabled=${busy==='purge'||!canPurge}>${busy==='purge'?'Working…':'Delete routine records past retention'}</button>
+          <div class="muted" style=${{fontSize:11,marginTop:6,lineHeight:1.5}}>Only attendance and boarding/supervisor checks over 3 years are deleted. Safeguarding, medical, behaviour and accident records are retained and shown for review here — never auto-deleted.</div></div></div>`}
+    </div>
+    <div class="card" style=${{padding:'12px 14px'}}>
+      <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}}><b>Access log — safeguarding & medical</b>
+        <button class="chip" onClick=${loadLog} disabled=${busy==='log'}>${busy==='log'?'Loading…':(log===null?'Show':'Refresh')}</button></div>
+      ${log===null?html`<div class="muted" style=${{fontSize:12}}>Every view or change of a safeguarding or medical record is recorded. Tap “Show” to review who has accessed what.</div>`:
+        (log.length===0?html`<div class="muted">No entries yet.</div>`:html`<div style=${{maxHeight:340,overflow:'auto'}}>${log.map(r=>html`<div key=${r.id} style=${{display:'flex',justifyContent:'space-between',gap:8,padding:'6px 0',borderTop:'1px solid #EFECE4',fontSize:12}}>
+          <div style=${{minWidth:0}}><b>${r.actor_name}</b> <span class="muted">${(r.action||'').replace('safeguarding.','safeguarding · ').replace('medical.','medical · ').replace('retention.','retention · ').replace(/_/g,' ')}</span></div>
+          <div class="muted" style=${{flexShrink:0,fontSize:11}}>${new Date(r.created_at).toLocaleString('en-GB')}</div></div>`)}</div>`)}
+    </div>
+    ${toast&&html`<div style=${{position:'fixed',left:'50%',bottom:24,transform:'translateX(-50%)',background:'#0E1D38',color:'#fff',padding:'10px 16px',borderRadius:999,fontSize:14,maxWidth:'90%',textAlign:'center'}}>${toast}</div>`}
+  </div>`}
+
 function Dashboard({profile,onSignOut}){
   const [pupils,setPupils]=useState(null);const [classes,setClasses]=useState([]);const [groups,setGroups]=useState([])
   const [anns,setAnns]=useState([]);const [tab,setTab]=useState('overview');const [q,setQ]=useState('');const [toast,setToast]=useState('')
@@ -928,8 +992,8 @@ function Dashboard({profile,onSignOut}){
         <div style=${{color:'#AEBAD0',fontSize:10}}>Al Jamiatul Islamiyah</div></div></div>
       <button onClick=${onSignOut} style=${{background:'transparent',border:'1px solid rgba(255,255,255,.3)',color:'#fff',borderRadius:10,padding:'6px 10px',fontSize:12,cursor:'pointer'}}>Sign out</button></div>
     <div style=${{height:3,background:`linear-gradient(90deg,${C.gold},${C.goldSoft})`}}></div>
-    <div style=${{padding:'8px 16px 0',display:'flex',gap:8,flexWrap:'wrap'}}>${['overview','pupils','attendance','league',...(canManage?['engagement']:[]),'praise','detentions','behaviour','safeguarding',...(canMedFire?['medical','firedrills']:[]),...(canIncident?['incidents']:[]),...(canBoarding?['boarding']:[]),...(canSup?['supervisor']:[]),'announce','inbox'].map(t=>html`
-      <button key=${t} onClick=${()=>setTab(t)} class="chip ${tab===t?'on':''}">${t==='overview'?'Overview':t==='pupils'?'Pupils':t==='attendance'?'Attendance':t==='league'?'League':t==='engagement'?'Engagement':t==='praise'?'Praise':t==='detentions'?'Detentions':t==='behaviour'?'Behaviour':t==='safeguarding'?'Safeguarding':t==='medical'?'Medical':t==='firedrills'?'Fire drills':t==='incidents'?'Injuries':t==='boarding'?'Boarding':t==='supervisor'?'Supervisor':t==='announce'?'Announce':'Inbox'}</button>`)}</div>
+    <div style=${{padding:'8px 16px 0',display:'flex',gap:8,flexWrap:'wrap'}}>${['overview','pupils','attendance','league',...(canManage?['engagement']:[]),'praise','detentions','behaviour','safeguarding',...(canMedFire?['medical','firedrills']:[]),...(canIncident?['incidents']:[]),...(canBoarding?['boarding']:[]),...(canSup?['supervisor']:[]),...(canManage?['dataprotection']:[]),'announce','inbox'].map(t=>html`
+      <button key=${t} onClick=${()=>setTab(t)} class="chip ${tab===t?'on':''}">${t==='overview'?'Overview':t==='pupils'?'Pupils':t==='attendance'?'Attendance':t==='league'?'League':t==='engagement'?'Engagement':t==='praise'?'Praise':t==='detentions'?'Detentions':t==='behaviour'?'Behaviour':t==='safeguarding'?'Safeguarding':t==='medical'?'Medical':t==='firedrills'?'Fire drills':t==='incidents'?'Injuries':t==='boarding'?'Boarding':t==='supervisor'?'Supervisor':t==='dataprotection'?'Data protection':t==='announce'?'Announce':'Inbox'}</button>`)}</div>
     <div style=${{padding:16}}>
       ${pupils===null&&html`<div class="muted">Loading live data…</div>`}
       ${tab==='overview'&&pupils&&html`<div>
@@ -970,8 +1034,10 @@ function Dashboard({profile,onSignOut}){
       ${tab==='incidents'&&canIncident&&html`<${Incidents} profile=${profile}/>`}
       ${tab==='boarding'&&canBoarding&&html`<${Boarding} profile=${profile}/>`}
       ${tab==='supervisor'&&canSup&&html`<${Supervisor} profile=${profile}/>`}
+      ${tab==='dataprotection'&&canManage&&html`<${DataProtection} profile=${profile}/>`}
       ${editPupil&&html`<${PupilEditor} pupil=${editPupil} classes=${classes} onClose=${()=>setEditPupil(null)} onSaved=${m=>{setEditPupil(null);fire(m);load()}}/>`}
     </div>
+    <${PrivacyFooter} staff=${true}/>
     ${toast&&html`<div style=${{position:'fixed',left:'50%',bottom:24,transform:'translateX(-50%)',background:'#0E1D38',color:'#fff',padding:'10px 16px',borderRadius:999,fontSize:14,maxWidth:'90%',textAlign:'center'}}>${toast}</div>`}
   </div>`}
 
@@ -1140,6 +1206,7 @@ function ParentApp({profile,onSignOut}){
       <p class="muted" style=${{fontSize:12,marginTop:0}}>Private — only you and the school office can see this.</p>
       ${cid===undefined?html`<div class="muted">Loading…</div>`:html`<${Thread} conversationId=${cid} isStaff=${false}/>`}
     </div>
+    <${PrivacyFooter}/>
     ${toast&&html`<div style=${{position:'fixed',left:'50%',bottom:24,transform:'translateX(-50%)',background:'#0E1D38',color:'#fff',padding:'10px 16px',borderRadius:999,fontSize:14}}>${toast}</div>`}
   </div>`}
 

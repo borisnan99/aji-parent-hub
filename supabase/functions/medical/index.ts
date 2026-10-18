@@ -19,6 +19,10 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     const action = body.action || "med_list";
 
+    // Accountability: record access to / changes of medical records (no health details are stored in the log).
+    const audit = (a: string, entity_id?: string | null, metadata?: any) =>
+      svc.from("audit_log").insert({ actor_id: user.id, action: a, entity_type: "medical", entity_id: entity_id ?? null, metadata: metadata ?? null }).then(() => {}, () => {});
+
     async function pupilMap(ids: string[]) {
       const u = [...new Set(ids.filter(Boolean))]; const m: Record<string, any> = {};
       if (u.length) { const { data } = await svc.from("pupils").select("id,first_name,last_name,academic_year").in("id", u); (data ?? []).forEach((p: any) => (m[p.id] = p)); }
@@ -37,13 +41,22 @@ Deno.serve(async (req) => {
       if (body.administered_at) row.administered_at = body.administered_at;
       const { data, error } = await svc.from("medication_log").insert(row).select().single();
       if (error) return json({ error: error.message }, 500);
+      await audit("medical.med_administer", data.id, { pupil_id });
       return json({ ok: true, id: data.id });
     }
     if (action === "med_list") {
       const { data: rows } = await svc.from("medication_log").select("*").order("administered_at", { ascending: false }).limit(60);
       const pm = await pupilMap((rows ?? []).map((r: any) => r.pupil_id));
       const out = (rows ?? []).map((r: any) => ({ ...r, pupil_name: pm[r.pupil_id] ? `${pm[r.pupil_id].first_name} ${pm[r.pupil_id].last_name}` : "(unknown)", academic_year: pm[r.pupil_id]?.academic_year || "" }));
+      await audit("medical.view_med_log", null, { count: out.length });
       return json({ ok: true, rows: out });
+    }
+    if (action === "audit") {
+      const { data: rows } = await svc.from("audit_log").select("*").eq("entity_type", "medical").order("created_at", { ascending: false }).limit(100);
+      const ids = [...new Set((rows ?? []).map((r: any) => r.actor_id).filter(Boolean))];
+      const um: Record<string, string> = {};
+      if (ids.length) { const { data } = await svc.from("profiles").select("id,full_name").in("id", ids); (data ?? []).forEach((u: any) => (um[u.id] = u.full_name)); }
+      return json({ ok: true, rows: (rows ?? []).map((r: any) => ({ ...r, actor_name: um[r.actor_id] || "—" })) });
     }
     if (action === "med_export") {
       const month = (body.month || new Date().toISOString().slice(0, 7)).slice(0, 7);
@@ -61,6 +74,7 @@ Deno.serve(async (req) => {
       const byslot: Record<string, any> = {};
       (rows ?? []).forEach((r: any) => (byslot[r.slot] = { ...r, pupil_name: r.pupil_id && pm[r.pupil_id] ? `${pm[r.pupil_id].first_name} ${pm[r.pupil_id].last_name}` : "", academic_year: r.pupil_id && pm[r.pupil_id] ? pm[r.pupil_id].academic_year : "" }));
       const slots = SLOTS.map((s) => ({ slot: s, booking: byslot[s] || null }));
+      await audit("medical.view_clinic", null, { date });
       return json({ ok: true, date, slots });
     }
     if (action === "triage_book") {
@@ -68,6 +82,7 @@ Deno.serve(async (req) => {
       if (!date || !slot || !body.pupil_id) return json({ error: "date, slot and pupil are required" }, 400);
       const { data, error } = await svc.from("triage_appointments").upsert({ appt_date: date, slot, pupil_id: body.pupil_id, reason: (body.reason || "").trim() || null, created_by: user.id, updated_at: new Date().toISOString() }, { onConflict: "appt_date,slot" }).select().single();
       if (error) return json({ error: error.message }, 500);
+      await audit("medical.triage_book", data.id, { date, slot });
       return json({ ok: true, id: data.id });
     }
     if (action === "triage_update") {
@@ -79,6 +94,7 @@ Deno.serve(async (req) => {
       if (body.seen !== undefined) upd.seen = body.seen === true;
       const { error } = await svc.from("triage_appointments").update(upd).eq("id", body.id);
       if (error) return json({ error: error.message }, 500);
+      await audit("medical.triage_update", body.id, null);
       return json({ ok: true });
     }
     if (action === "triage_clear") {
