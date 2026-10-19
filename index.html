@@ -1506,8 +1506,8 @@ function Dashboard({profile,onSignOut}){
         <div style=${{color:'#AEBAD0',fontSize:10}}>Al Jamiatul Islamiyah</div></div></div>
       <button onClick=${onSignOut} style=${{background:'transparent',border:'1px solid rgba(255,255,255,.3)',color:'#fff',borderRadius:10,padding:'6px 10px',fontSize:12,cursor:'pointer'}}>Sign out</button></div>
     <div style=${{height:3,background:`linear-gradient(90deg,${C.gold},${C.goldSoft})`}}></div>
-    <div style=${{padding:'8px 16px 0',display:'flex',gap:8,flexWrap:'wrap'}}>${['overview','pupils','attendance','league',...(canManage?['engagement']:[]),'praise','detentions','behaviour','safeguarding',...(canMedFire?['medical','firedrills']:[]),...(canIncident?['incidents']:[]),...(canBoarding?['boarding']:[]),...(canSup?['supervisor']:[]),...(canKit?['kitchen']:[]),...(canManage?['dataprotection']:[]),'announce','inbox'].map(t=>html`
-      <button key=${t} onClick=${()=>setTab(t)} class="chip ${tab===t?'on':''}">${t==='overview'?'Overview':t==='pupils'?'Pupils':t==='attendance'?'Attendance':t==='league'?'League':t==='engagement'?'Engagement':t==='praise'?'Praise':t==='detentions'?'Detentions':t==='behaviour'?'Behaviour':t==='safeguarding'?'Safeguarding':t==='medical'?'Medical':t==='firedrills'?'Fire drills':t==='incidents'?'Injuries':t==='boarding'?'Boarding':t==='supervisor'?'Supervisor':t==='kitchen'?'Kitchen':t==='dataprotection'?'Data protection':t==='announce'?'Announce':'Inbox'}</button>`)}</div>
+    <div style=${{padding:'8px 16px 0',display:'flex',gap:8,flexWrap:'wrap'}}>${['overview','pupils','attendance','league',...(canManage?['engagement']:[]),'praise','detentions','behaviour','safeguarding',...(canMedFire?['medical','firedrills']:[]),...(canIncident?['incidents']:[]),...(canBoarding?['boarding']:[]),...(canSup?['supervisor']:[]),...(canKit?['kitchen']:[]),...(canManage?['dataprotection','users']:[]),'announce','inbox'].map(t=>html`
+      <button key=${t} onClick=${()=>setTab(t)} class="chip ${tab===t?'on':''}">${t==='overview'?'Overview':t==='pupils'?'Pupils':t==='attendance'?'Attendance':t==='league'?'League':t==='engagement'?'Engagement':t==='praise'?'Praise':t==='detentions'?'Detentions':t==='behaviour'?'Behaviour':t==='safeguarding'?'Safeguarding':t==='medical'?'Medical':t==='firedrills'?'Fire drills':t==='incidents'?'Injuries':t==='boarding'?'Boarding':t==='supervisor'?'Supervisor':t==='kitchen'?'Kitchen':t==='dataprotection'?'Data protection':t==='users'?'Users':t==='announce'?'Announce':'Inbox'}</button>`)}</div>
     <div style=${{padding:16}}>
       ${pupils===null&&html`<div class="muted">Loading live data…</div>`}
       ${tab==='overview'&&pupils&&html`<div>
@@ -1550,6 +1550,7 @@ function Dashboard({profile,onSignOut}){
       ${tab==='supervisor'&&canSup&&html`<${Supervisor} profile=${profile}/>`}
       ${tab==='kitchen'&&canKit&&html`<${Kitchen} profile=${profile}/>`}
       ${tab==='dataprotection'&&canManage&&html`<${DataProtection} profile=${profile}/>`}
+      ${tab==='users'&&canManage&&html`<${Users} profile=${profile}/>`}
       ${editPupil&&html`<${PupilEditor} pupil=${editPupil} classes=${classes} onClose=${()=>setEditPupil(null)} onSaved=${m=>{setEditPupil(null);fire(m);load()}}/>`}
     </div>
     <${PrivacyFooter} staff=${true}/>
@@ -1959,6 +1960,46 @@ function Detentions({profile}){
       </div>`})}
   </div>`}
 
+function Users({profile}){
+  const [me,setMe]=useState('')
+  const [staff,setStaff]=useState(null)
+  const [q,setQ]=useState('');const [results,setResults]=useState(null);const [searching,setSearching]=useState(false)
+  const [busy,setBusy]=useState('');const [toast,setToast]=useState('')
+  const fire=m=>{setToast(m);setTimeout(()=>setToast(''),3600)}
+  async function load(){const {data,error}=await sb.functions.invoke('user-admin',{body:{action:'list'}});if(error||(data&&data.error)){fire((data&&data.error)||'Error loading');setStaff([]);return}setStaff(data.users||[]);setMe(data.me||'')}
+  useEffect(()=>{load()},[])
+  async function search(){const term=q.trim();if(term.length<2){setResults(null);return}setSearching(true);const {data}=await sb.functions.invoke('user-admin',{body:{action:'search',q:term}});setSearching(false);setResults((data&&data.users)||[])}
+  async function setActive(u,active){
+    if(!window.confirm((active?'Restore access for ':'Remove access for ')+u.full_name+'?'+(active?'':'\n\nThey will be signed out and cannot log in. Everything they recorded stays in the system, and you can restore them any time.')))return
+    setBusy(u.id);const {data,error}=await sb.functions.invoke('user-admin',{body:{action:'set_active',user_id:u.id,active}});setBusy('')
+    if(error||(data&&data.error)){fire((data&&data.error)||'Error');return}
+    fire((active?'Access restored for ':'Access removed for ')+u.full_name);load();if(results)search()}
+  const fmtLast=d=>d?new Date(d).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}):'never signed in'
+  const roleTag=r=>html`<span class="tag" style=${{background:r==='admin'?C.navy:'#EEF',color:r==='admin'?'#fff':C.navy,fontSize:10}}>${r==='admin'?'Admin':'Staff'}</span>`
+  const row=u=>html`<div key=${u.id} class="card" style=${{padding:'10px 12px',marginBottom:6}}>
+    <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8}}>
+      <div><b>${u.full_name}</b> ${u.role!=='parent'?roleTag(u.role):html`<span class="tag" style=${{background:'#EFE9DC',color:C.muted,fontSize:10}}>Parent</span>`}${u.id===me?html`<span class="muted" style=${{fontSize:11}}> · you</span>`:''}
+        <div class="muted" style=${{fontSize:11,marginTop:2}}>${u.email||''}</div>
+        <div class="muted" style=${{fontSize:11}}>${u.is_active?('Last sign-in: '+fmtLast(u.last_sign_in)):'Access removed'}</div></div>
+      <div>${u.is_active
+        ?(u.id===me?html`<span class="muted" style=${{fontSize:11}}>—</span>`:html`<button class="chip" style=${{color:C.urgent}} disabled=${busy===u.id} onClick=${()=>setActive(u,false)}>${busy===u.id?'…':'Remove access'}</button>`)
+        :html`<button class="chip" style=${{color:C.green}} disabled=${busy===u.id} onClick=${()=>setActive(u,true)}>${busy===u.id?'…':'Restore access'}</button>`}</div>
+    </div>
+  </div>`
+  return html`<div>
+    <h2 class="serif" style=${{color:C.navy,marginTop:4}}>Users & access</h2>
+    <p class="muted" style=${{fontSize:12,marginTop:0,lineHeight:1.5}}>Remove access when someone no longer needs it — they're signed out and can't log in, but everything they recorded stays attributed to them, and you can restore access any time. Accounts aren't deleted, so safeguarding and audit history stays intact.</p>
+    <div class="card" style=${{padding:'10px 12px',marginBottom:12}}>
+      <div class="lbl">Find a user (staff or parent)</div>
+      <div style=${{display:'flex',gap:8}}><input class="in" style=${{marginTop:0}} placeholder="Search name or email…" value=${q} onInput=${e=>setQ(e.target.value)} onKeyDown=${e=>{if(e.key==='Enter')search()}}/><button class="chip" onClick=${search}>${searching?'…':'Search'}</button></div>
+      ${results!==null&&html`<div style=${{marginTop:8}}>${results.length?results.map(row):html`<div class="muted" style=${{fontSize:12}}>No match.</div>`}<div style=${{marginTop:4}}><button class="chip" onClick=${()=>{setResults(null);setQ('')}}>Clear search</button></div></div>`}
+    </div>
+    <div class="lbl">Staff & admins</div>
+    ${staff===null&&html`<div class="muted">Loading…</div>`}
+    ${(staff||[]).map(row)}
+    ${toast&&html`<div style=${{position:'fixed',left:'50%',bottom:24,transform:'translateX(-50%)',background:'#0E1D38',color:'#fff',padding:'10px 16px',borderRadius:999,fontSize:14,maxWidth:'90%',textAlign:'center'}}>${toast}</div>`}
+  </div>`}
+
 function App(){
   const [session,setSession]=useState(undefined);const [profile,setProfile]=useState(null);const [recovery,setRecovery]=useState(false)
   useEffect(()=>{
@@ -1970,6 +2011,7 @@ function App(){
   if(session===undefined)return html`<div class="center muted">Loading…</div>`
   if(!session)return html`<${Login}/>`
   if(profile===null)return html`<div class="center muted">Loading…</div>`
+  if(profile.is_active===false)return html`<div class="center" style=${{textAlign:'center',padding:24,maxWidth:360,margin:'0 auto'}}><div class="serif" style=${{color:C.navy,fontSize:20,marginBottom:8}}>Account deactivated</div><p class="muted" style=${{fontSize:14,lineHeight:1.5}}>Your access to the Parent Hub has been removed. If you think this is a mistake, please contact the school office.</p><button class="btn" style=${{marginTop:14,width:'auto'}} onClick=${()=>sb.auth.signOut()}>Sign out</button></div>`
   if(profile.role==='admin'||profile.role==='staff')return html`<${Dashboard} profile=${profile} onSignOut=${()=>sb.auth.signOut()}/>`
   return html`<${ParentApp} profile=${profile} onSignOut=${()=>sb.auth.signOut()}/>`}
 createRoot(document.getElementById('root')).render(html`<${App}/>`)
