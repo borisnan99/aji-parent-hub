@@ -517,21 +517,54 @@ function Incidents({profile}){
 
 const BOARDING_STAFF={names:['ihsaanul haque','gulfam khan'],emails:['ihsaanul.haque@boltondarululoom.org.uk','gulfam.khan@boltondarululoom.org.uk']}
 function canBoardingCheck(p){if(!p)return false;if(p.role==='admin')return true;const nm=(p.full_name||'').trim().toLowerCase(),em=(p.email||'').toLowerCase();return BOARDING_STAFF.names.includes(nm)||BOARDING_STAFF.emails.includes(em)}
-const BOARD_ITEMS=[['bed_ok','Beds'],['cupboard_ok','Cupboards'],['carpet_ok','Carpets'],['light_ok','Lights'],['switch_ok','Switches'],['radiator_ok','Radiators'],['window_ok','Windows'],['restrictor_ok','Window restrictors']]
+const BOARD_FABRIC=[['carpet_ok','Carpets'],['light_ok','Lights'],['switch_ok','Switches'],['radiator_ok','Radiators'],['window_ok','Windows'],['restrictor_ok','Window restrictors']]
+const DOW_NAMES=['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday']
+const DAMAGE_ITEMS=['Cupboard','Bin','Window restrictor','Door handle','Socket','Lock','Cupboard latch / hinge','Wall','Fire door closer','Light fitting','Bed frame','Mattress','Other']
+const DAMAGE_REPORTERS=['Ihsaanul Haque','Gulfam Khan','Zubair Patel','Yasin Patel']
+function canBoardingDamage(p){if(!p)return false;if(p.role==='admin')return true;const nm=(p.full_name||'').trim().toLowerCase(),em=(p.email||'').toLowerCase();return ['ihsaanul haque','gulfam khan','zubair patel','yasin patel'].includes(nm)||['ihsaanul.haque@boltondarululoom.org.uk','gulfam.khan@boltondarululoom.org.uk','zubair.patel@boltondarululoom.org.uk','yasin.patel@boltondarululoom.org.uk'].includes(em)}
+const bFmtD=d=>new Date(d+'T00:00:00').toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'})
+const bEsc=s=>(s==null?'':String(s)).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
 
 function Boarding({profile}){
+  const isAdmin=profile.role==='admin'
+  const fullBoard=canBoardingCheck(profile)
+  const canDamage=canBoardingDamage(profile)
+  const [tab,setTab]=useState(fullBoard?'checks':'damage')
+  const [toast,setToast]=useState('')
+  const fire=m=>{setToast(m);setTimeout(()=>setToast(''),3600)}
+  const TABS=[...(fullBoard?[['checks','Checks'],['tidy','Tidy alerts'],['rota','Cleaning rota']]:[]),...(isAdmin?[['rooms','Rooms & occupants']]:[]),...(canDamage?[['damage','Damage log']]:[])]
+  return html`<div>
+    <h2 class="serif" style=${{color:C.navy,marginTop:4}}>Boarding house</h2>
+    <div style=${{display:'flex',gap:6,flexWrap:'wrap',marginBottom:12}}>${TABS.map(([k,l])=>html`<button key=${k} class="chip ${tab===k?'on':''}" onClick=${()=>setTab(k)}>${l}</button>`)}</div>
+    ${tab==='checks'&&html`<${BoardingChecks} profile=${profile} fire=${fire}/>`}
+    ${tab==='tidy'&&html`<${BoardingTidy} profile=${profile} fire=${fire}/>`}
+    ${tab==='rota'&&html`<${BoardingRota} profile=${profile} fire=${fire}/>`}
+    ${tab==='rooms'&&isAdmin&&html`<${BoardingRooms} profile=${profile} fire=${fire}/>`}
+    ${tab==='damage'&&canDamage&&html`<${BoardingDamage} profile=${profile} fire=${fire}/>`}
+    ${toast&&html`<div style=${{position:'fixed',left:'50%',bottom:24,transform:'translateX(-50%)',background:'#0E1D38',color:'#fff',padding:'10px 16px',borderRadius:999,fontSize:14,maxWidth:'90%',textAlign:'center'}}>${toast}</div>`}
+  </div>`}
+
+function BoardingChecks({profile,fire}){
   const today=new Date().toISOString().slice(0,10)
   const [date,setDate]=useState(today)
-  const [rooms,setRooms]=useState(null);const [checks,setChecks]=useState({});const [flags,setFlags]=useState([]);const [canResolve,setCanResolve]=useState(false)
-  const [open,setOpen]=useState(null);const [draft,setDraft]=useState({});const [busy,setBusy]=useState(false);const [toast,setToast]=useState('')
-  const fire=m=>{setToast(m);setTimeout(()=>setToast(''),3600)}
-  async function load(d){setRooms(null);const {data,error}=await sb.functions.invoke('boarding-check',{body:{action:'load',date:d||date}});if(error||(data&&data.error)){fire((data&&data.error)||'Error loading');setRooms([]);return}setRooms(data.rooms||[]);setChecks(data.checks||{});setFlags(data.flags||[]);setCanResolve(!!data.can_resolve)}
+  const [d,setD]=useState(null)
+  const [open,setOpen]=useState(null);const [draft,setDraft]=useState(null);const [busy,setBusy]=useState(false)
+  async function load(dt){setD(null);const {data,error}=await sb.functions.invoke('boarding-check',{body:{action:'load',date:dt||date}});if(error||(data&&data.error)){fire((data&&data.error)||'Error loading');setD({rooms:[]});return}setD(data)}
   useEffect(()=>{load(date)},[date])
-  function statusOf(id){const c=checks[id];if(!c)return 'none';const vals=[c.bed_ok,c.cupboard_ok,c.carpet_ok,c.light_ok,c.switch_ok,c.radiator_ok,c.window_ok,c.restrictor_ok];return vals.some(v=>v===false)?'issue':'ok'}
-  function expand(r){const c=checks[r.id];setDraft(c?{bed_ok:c.bed_ok!==false,cupboard_ok:c.cupboard_ok!==false,carpet_ok:c.carpet_ok!==false,light_ok:c.light_ok!==false,switch_ok:c.switch_ok!==false,radiator_ok:c.radiator_ok!==false,window_ok:c.window_ok!==false,restrictor_ok:c.restrictor_ok!==false,notes:c.notes||''}:{bed_ok:true,cupboard_ok:true,carpet_ok:true,light_ok:true,switch_ok:true,radiator_ok:true,window_ok:true,restrictor_ok:true,notes:''});setOpen(r.id)}
-  async function save(roomId,payload){setBusy(true);const {data,error}=await sb.functions.invoke('boarding-check',{body:{action:'save',room_id:roomId,date,...payload}});setBusy(false);if(error||(data&&data.error)){fire((data&&data.error)||'Error saving');return}fire(data.flagged?'Saved · flagged to Maulana Gulfam':'Saved');setOpen(null);load(date)}
-  function allGood(roomId){save(roomId,{bed_ok:true,cupboard_ok:true,carpet_ok:true,light_ok:true,switch_ok:true,radiator_ok:true,window_ok:true,restrictor_ok:true,notes:''})}
-  async function resolve(f){const {data,error}=await sb.functions.invoke('boarding-check',{body:{action:'resolve',room_id:f.room_id,date:f.check_date}});if(error||(data&&data.error)){fire((data&&data.error)||'Error');return}fire('Marked resolved');load(date)}
+  const checks=d?(d.checks||{}):{},occ=d?(d.occupants||{}):{},cleaning=d?(d.cleaning||{}):{},issues=d?(d.issues||{}):{},weekDone=d?(d.week_done||{}):{}
+  const flags=d?(d.flags||[]):[];const canResolve=d?d.can_resolve:false;const dow=d?d.dow:1
+  function statusOf(id){const c=checks[id];if(!c)return 'none';const bad=[c.carpet_ok,c.light_ok,c.switch_ok,c.radiator_ok,c.window_ok,c.restrictor_ok].some(v=>v===false)||c.bed_ok===false||c.cupboard_ok===false;return bad?'issue':'ok'}
+  function expand(r){const c=checks[r.id]||{};const fab={};BOARD_FABRIC.forEach(([k])=>fab[k]=c[k]!==false)
+    const ex={};(issues[r.id]||[]).forEach(i=>ex[i.pupil_id]={bedOn:!!i.bed_issue,bedTxt:i.bed_issue||'',cupOn:!!i.cupboard_issue,cupTxt:i.cupboard_issue||''})
+    const iss={};(occ[r.id]||[]).forEach(o=>iss[o.pupil_id]=ex[o.pupil_id]||{bedOn:false,bedTxt:'',cupOn:false,cupTxt:''})
+    setDraft({fab,iss,notes:c.notes||''});setOpen(r.id)}
+  function toggle(pid,w){setDraft(dr=>{const s={...dr.iss[pid]};if(w==='bed')s.bedOn=!s.bedOn;else s.cupOn=!s.cupOn;return {...dr,iss:{...dr.iss,[pid]:s}}})}
+  function setTxt(pid,w,v){setDraft(dr=>{const s={...dr.iss[pid]};if(w==='bed')s.bedTxt=v;else s.cupTxt=v;return {...dr,iss:{...dr.iss,[pid]:s}}})}
+  async function save(roomId,payload){setBusy(true);const {data,error}=await sb.functions.invoke('boarding-check',{body:{action:'save',room_id:roomId,date,...payload}});setBusy(false);if(error||(data&&data.error)){fire((data&&data.error)||'Error saving');return}
+    let msg='Saved';if(data.flagged)msg='Saved · restrictor flagged to Maulana Gulfam';const nf=data.tidy&&data.tidy.flags?data.tidy.flags.filter(f=>!f.sent).length:0;if(nf)msg+=' · '+nf+' tidy alert'+(nf>1?'s':'')+' this week';fire(msg);setOpen(null);load(date)}
+  function saveRoom(r){const issues=(occ[r.id]||[]).map(o=>{const s=draft.iss[o.pupil_id]||{};return {pupil_id:o.pupil_id,bed_issue:s.bedOn?(s.bedTxt.trim()||'Untidy'):null,cupboard_issue:s.cupOn?(s.cupTxt.trim()||'Untidy'):null}});save(r.id,{...draft.fab,notes:draft.notes,issues})}
+  function allGood(r){save(r.id,{carpet_ok:true,light_ok:true,switch_ok:true,radiator_ok:true,window_ok:true,restrictor_ok:true,notes:'',issues:[]})}
+  async function resolve(f){const {data,error}=await sb.functions.invoke('boarding-check',{body:{action:'resolve',room_id:f.room_id,date:f.check_date}});if(error||(data&&data.error)){fire((data&&data.error)||'Error');return}fire('Marked done');load(date)}
   async function exportCsv(){const {data,error}=await sb.functions.invoke('boarding-check',{body:{action:'export',month:date.slice(0,7)}});if(error||(data&&data.error)){fire('Export failed');return}
     const rows=(data&&data.rows)||[];if(!rows.length){fire('No checks this month yet');return}
     const yn=v=>v===true?'OK':v===false?'ISSUE':''
@@ -539,48 +572,258 @@ function Boarding({profile}){
     const out=[head].concat(rows.map(r=>[r.check_date,r.room_name,yn(r.bed_ok),yn(r.cupboard_ok),yn(r.carpet_ok),yn(r.light_ok),yn(r.switch_ok),yn(r.radiator_ok),yn(r.window_ok),yn(r.restrictor_ok),r.restrictor_ok===false?(r.flag_resolved?'Yes':'No'):'',r.checked_by_name||'',r.notes||'']))
     const csv=out.map(r=>r.map(x=>'"'+(x==null?'':x).toString().replace(/"/g,'""')+'"').join(',')).join(String.fromCharCode(10))
     const u=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));const a=document.createElement('a');a.href=u;a.download='boarding_checks_'+date.slice(0,7)+'.csv';a.click();URL.revokeObjectURL(u)}
-  const fmtD=d=>new Date(d+'T00:00:00').toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'})
-  const doneCount=rooms?rooms.filter(r=>checks[r.id]).length:0
+  const rooms=d?(d.rooms||[]):[]
+  const dailyRooms=rooms.filter(r=>r.check_frequency!=='weekly');const weeklyRooms=rooms.filter(r=>r.check_frequency==='weekly')
+  const doneCount=rooms.filter(r=>checks[r.id]).length
+  function roomCard(r,weekly){const st=statusOf(r.id);const isOpen=open===r.id
+    const sc=st==='ok'?{bg:'#E5EEE7',fg:C.green,t:'✓ Checked'}:st==='issue'?{bg:C.urgentSoft,fg:C.urgent,t:'⚠ Issue'}:{bg:'#F3EFE6',fg:C.muted,t:'Not checked'}
+    const wk=weekly&&!checks[r.id]?(weekDone[r.id]?{bg:'#E5EEE7',fg:C.green,t:'✓ This week'}:{bg:'#FBECC9',fg:'#8A6D1B',t:'Due this week'}):null
+    const duty=cleaning[r.id]||[]
+    return html`<div key=${r.id} class="card" style=${{padding:0,marginBottom:8,overflow:'hidden'}}>
+      <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'10px 12px',cursor:'pointer',gap:8}} onClick=${()=>isOpen?setOpen(null):expand(r)}>
+        <div><b>${r.name}</b>${r.check_frequency==='weekly'?html`<span class="tag" style=${{background:'#EEF',color:C.navy,marginLeft:6,fontSize:10}}>Weekly</span>`:''}</div>
+        <div style=${{display:'flex',gap:6,alignItems:'center',flexWrap:'wrap',justifyContent:'flex-end'}}>
+          ${wk&&html`<span class="tag" style=${{background:wk.bg,color:wk.fg}}>${wk.t}</span>`}
+          <span class="tag" style=${{background:sc.bg,color:sc.fg,padding:'4px 10px'}}>${sc.t}</span>
+          ${st==='none'&&html`<button class="chip" onClick=${e=>{e.stopPropagation();allGood(r)}}>✓ All good</button>`}
+        </div>
+      </div>
+      ${isOpen&&draft&&html`<div style=${{padding:'4px 12px 12px',borderTop:'1px solid #EEEAE0'}}>
+        ${duty.length?html`<div style=${{background:C.goldSoft,border:'1px solid '+C.gold,borderRadius:8,padding:'6px 10px',fontSize:12,margin:'8px 0'}}><b>On cleaning duty (${DOW_NAMES[dow-1]}):</b> ${duty.join(', ')}</div>`:''}
+        <div class="lbl" style=${{marginTop:6}}>Beds & cupboards</div>
+        ${(occ[r.id]||[]).length?html`<div style=${{fontSize:11,color:C.muted,marginBottom:4}}>Tap Bed or Cupboard only if there's a problem — otherwise leave as tidy.</div>
+          ${(occ[r.id]||[]).map(o=>{const s=draft.iss[o.pupil_id]||{};return html`<div key=${o.pupil_id} style=${{padding:'6px 0',borderTop:'1px solid #F2EFE6'}}>
+            <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8}}>
+              <span>${o.name}${o.is_rep?html`<span class="tag" style=${{background:C.navy,color:'#fff',marginLeft:6,fontSize:9}}>Rep</span>`:''}</span>
+              <div style=${{display:'flex',gap:6}}>
+                <button class="chip" style=${{background:s.bedOn?C.urgent:'',color:s.bedOn?'#fff':''}} onClick=${()=>toggle(o.pupil_id,'bed')}>Bed</button>
+                <button class="chip" style=${{background:s.cupOn?C.urgent:'',color:s.cupOn?'#fff':''}} onClick=${()=>toggle(o.pupil_id,'cup')}>Cupboard</button>
+              </div>
+            </div>
+            ${s.bedOn&&html`<input class="in" style=${{marginTop:6}} placeholder="What was wrong with the bed?" value=${s.bedTxt} onInput=${e=>setTxt(o.pupil_id,'bed',e.target.value)}/>`}
+            ${s.cupOn&&html`<input class="in" style=${{marginTop:6}} placeholder="What was wrong with the cupboard?" value=${s.cupTxt} onInput=${e=>setTxt(o.pupil_id,'cup',e.target.value)}/>`}
+          </div>`})}`:html`<div class="muted" style=${{fontSize:12}}>No pupils assigned to this room yet. ${profile.role==='admin'?'Add them in Rooms & occupants.':''}</div>`}
+        <div class="lbl" style=${{marginTop:12}}>Room check</div>
+        ${BOARD_FABRIC.map(([k,lbl])=>html`<div key=${k} style=${{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'7px 0'}}>
+          <span style=${{fontWeight:k==='restrictor_ok'?700:400}}>${lbl}</span>
+          <div style=${{display:'flex',gap:6}}>
+            <button class="chip" style=${{background:draft.fab[k]===true?C.green:'',color:draft.fab[k]===true?'#fff':''}} onClick=${()=>setDraft(dr=>({...dr,fab:{...dr.fab,[k]:true}}))}>OK</button>
+            <button class="chip" style=${{background:draft.fab[k]===false?C.urgent:'',color:draft.fab[k]===false?'#fff':''}} onClick=${()=>setDraft(dr=>({...dr,fab:{...dr.fab,[k]:false}}))}>Issue</button>
+          </div>
+        </div>`)}
+        ${draft.fab.restrictor_ok===false&&html`<div style=${{fontSize:11,color:C.urgent,margin:'2px 0 6px'}}>This will be flagged to Maulana Gulfam immediately on save.</div>`}
+        <textarea class="in" style=${{minHeight:48,resize:'vertical',fontFamily:'inherit'}} placeholder="Notes (optional)…" value=${draft.notes||''} onInput=${e=>setDraft(dr=>({...dr,notes:e.target.value}))}></textarea>
+        <button class="btn" style=${{marginTop:8}} disabled=${busy} onClick=${()=>saveRoom(r)}>${busy?'Saving…':'Save check'}</button>
+      </div>`}
+    </div>`}
   return html`<div>
-    <h2 class="serif" style=${{color:C.navy,marginTop:4}}>Boarding room checks</h2>
-    <p class="muted" style=${{fontSize:12,marginTop:0}}>Daily check of each room — beds, cupboards, floor, windows and window restrictors. A missing restrictor is flagged to Maulana Gulfam straight away.</p>
+    <p class="muted" style=${{fontSize:12,marginTop:0}}>Beds, cupboards, carpets, lights, switches, radiators, windows and window restrictors. A missing restrictor is flagged to Maulana Gulfam straight away; an untidy bed or cupboard twice in a week raises a tidy alert.</p>
     <div style=${{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap',marginBottom:10}}>
       <input class="in" type="date" style=${{marginTop:0,width:'auto'}} value=${date} onInput=${e=>setDate(e.target.value)}/>
       <button class="chip" onClick=${exportCsv}>📄 Month CSV</button>
-      ${rooms&&html`<span class="muted" style=${{fontSize:12,marginLeft:'auto'}}>${doneCount}/${rooms.length} rooms checked</span>`}
+      ${d&&html`<span class="muted" style=${{fontSize:12,marginLeft:'auto'}}>${doneCount}/${rooms.length} checked</span>`}
     </div>
     ${canResolve&&flags.length>0&&html`<div class="card" style=${{padding:'10px 12px',marginBottom:12,background:C.urgentSoft,border:'1px solid '+C.urgent}}>
       <div style=${{fontWeight:700,color:C.urgent,marginBottom:6}}>⚠ Window restrictors to action (${flags.length})</div>
       ${flags.map(f=>html`<div key=${f.room_id+f.check_date} style=${{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'6px 0',borderTop:'1px solid #F2C9C4'}}>
-        <div><b>${f.room_name}</b> <span class="muted" style=${{fontSize:11}}>${fmtD(f.check_date)} · ${f.checked_by_name}</span>${f.notes?html`<div style=${{fontSize:12}}>${f.notes}</div>`:''}</div>
+        <div><b>${f.room_name}</b> <span class="muted" style=${{fontSize:11}}>${bFmtD(f.check_date)} · ${f.checked_by_name}</span>${f.notes?html`<div style=${{fontSize:12}}>${f.notes}</div>`:''}</div>
         <button class="chip" onClick=${()=>resolve(f)}>Mark done</button>
       </div>`)}
     </div>`}
-    ${rooms===null&&html`<div class="muted">Loading…</div>`}
-    ${(rooms||[]).map(r=>{const st=statusOf(r.id);const sc=st==='ok'?{bg:'#E5EEE7',fg:C.green,t:'✓ Checked'}:st==='issue'?{bg:C.urgentSoft,fg:C.urgent,t:'⚠ Issue'}:{bg:'#F3EFE6',fg:C.muted,t:'Not checked'}
-      const isOpen=open===r.id
-      return html`<div key=${r.id} class="card" style=${{padding:0,marginBottom:8,overflow:'hidden'}}>
-        <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'10px 12px',cursor:'pointer'}} onClick=${()=>isOpen?setOpen(null):expand(r)}>
-          <b>${r.name}</b>
-          <div style=${{display:'flex',gap:8,alignItems:'center'}}>
-            <span class="tag" style=${{background:sc.bg,color:sc.fg,padding:'4px 10px'}}>${sc.t}</span>
-            ${st==='none'&&html`<button class="chip" onClick=${e=>{e.stopPropagation();allGood(r.id)}}>✓ All good</button>`}
-          </div>
-        </div>
-        ${isOpen&&html`<div style=${{padding:'4px 12px 12px',borderTop:'1px solid #EEEAE0'}}>
-          ${BOARD_ITEMS.map(([k,lbl])=>html`<div key=${k} style=${{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'7px 0'}}>
-            <span style=${{fontWeight:k==='restrictor_ok'?700:400}}>${lbl}</span>
-            <div style=${{display:'flex',gap:6}}>
-              <button class="chip" style=${{background:draft[k]===true?C.green:'',color:draft[k]===true?'#fff':''}} onClick=${()=>setDraft(d=>({...d,[k]:true}))}>OK</button>
-              <button class="chip" style=${{background:draft[k]===false?C.urgent:'',color:draft[k]===false?'#fff':''}} onClick=${()=>setDraft(d=>({...d,[k]:false}))}>Issue</button>
-            </div>
-          </div>`)}
-          ${draft.restrictor_ok===false&&html`<div style=${{fontSize:11,color:C.urgent,margin:'2px 0 6px'}}>This will be flagged to Maulana Gulfam immediately on save.</div>`}
-          <textarea class="in" style=${{minHeight:48,resize:'vertical',fontFamily:'inherit'}} placeholder="Notes (optional)…" value=${draft.notes||''} onInput=${e=>setDraft(d=>({...d,notes:e.target.value}))}></textarea>
-          <button class="btn" style=${{marginTop:8}} disabled=${busy} onClick=${()=>save(r.id,draft)}>${busy?'Saving…':'Save check'}</button>
-        </div>`}
+    ${d===null&&html`<div class="muted">Loading…</div>`}
+    ${d&&dailyRooms.map(r=>roomCard(r,false))}
+    ${weeklyRooms.length>0&&html`<div class="lbl" style=${{marginTop:14}}>Weekly rooms — check once a week</div>${weeklyRooms.map(r=>roomCard(r,true))}`}
+  </div>`}
+
+function BoardingTidy({profile,fire}){
+  const [d,setD]=useState(null);const [busy,setBusy]=useState('')
+  async function load(){setD(null);const {data,error}=await sb.functions.invoke('boarding-check',{body:{action:'load'}});if(error||(data&&data.error)){fire('Error loading');setD({tidy:{flags:[]}});return}setD(data)}
+  useEffect(()=>{load()},[])
+  const flags=d&&d.tidy?(d.tidy.flags||[]):[];const canResolve=d?d.can_resolve:false
+  async function send(f){if(!window.confirm('Send a tidy note to '+f.name+'’s parents for this week?'))return;setBusy(f.pupil_id);const {data,error}=await sb.functions.invoke('boarding-check',{body:{action:'send_tidy_notice',pupil_id:f.pupil_id}});setBusy('');if(error||(data&&data.error)){fire((data&&data.error)||'Error');return}fire('Parent note sent'+(data.delivered?' ('+data.delivered+' email'+(data.delivered>1?'s':'')+')':' (in-app)'));load()}
+  return html`<div>
+    <p class="muted" style=${{fontSize:12,marginTop:0}}>Boarders whose bed or cupboard was untidy on two or more days this week. A note to parents is a gentle, non-disciplinary reminder — cleanliness is part of our deen.</p>
+    ${d===null&&html`<div class="muted">Loading…</div>`}
+    ${d&&flags.length===0&&html`<div class="card muted" style=${{padding:16}}>No boarders have been flagged twice this week. 🌟</div>`}
+    ${flags.map(f=>html`<div key=${f.pupil_id} class="card" style=${{padding:'10px 12px',marginBottom:8,display:'flex',justifyContent:'space-between',alignItems:'center',gap:10}}>
+      <div><b>${f.name}</b> <span class="muted" style=${{fontSize:11}}>${(f.rooms||[]).join(', ')}</span><div class="muted" style=${{fontSize:12,marginTop:2}}>Untidy on ${f.days} days this week</div></div>
+      ${f.sent?html`<span class="tag" style=${{background:'#E5EEE7',color:C.green,padding:'4px 10px'}}>✓ Note sent</span>`:canResolve?html`<button class="btn" style=${{width:'auto',padding:'8px 12px'}} disabled=${busy===f.pupil_id} onClick=${()=>send(f)}>${busy===f.pupil_id?'Sending…':'Send parent note'}</button>`:html`<span class="muted" style=${{fontSize:11}}>Maulana Gulfam / admin sends</span>`}
+    </div>`)}
+  </div>`}
+
+function BoardingRota({profile,fire}){
+  const isAdmin=profile.role==='admin'
+  const [rooms,setRooms]=useState(null);const [roomId,setRoomId]=useState('');const [data,setData]=useState(null);const [edit,setEdit]=useState(false)
+  async function loadRooms(){const {data}=await sb.functions.invoke('boarding-manage',{body:{action:'rooms'}});const rs=(data&&data.rooms)||[];setRooms(rs);if(rs.length)setRoomId(x=>x||rs[0].id)}
+  useEffect(()=>{loadRooms()},[])
+  async function loadRota(id){if(!id)return;setData(null);const {data}=await sb.functions.invoke('boarding-manage',{body:{action:'rota_get',room_id:id}});setData(data)}
+  useEffect(()=>{loadRota(roomId)},[roomId])
+  async function toggleDay(dow,pid){const cur=(data.by_dow[dow]||[]).map(x=>x.pupil_id);const next=cur.includes(pid)?cur.filter(x=>x!==pid):cur.concat([pid]);const {error}=await sb.functions.invoke('boarding-manage',{body:{action:'rota_set',room_id:roomId,dow,pupil_ids:next}});if(error){fire('Error');return}loadRota(roomId)}
+  async function setRep(pid){const {error}=await sb.functions.invoke('boarding-manage',{body:{action:'set_rep',room_id:roomId,pupil_id:pid}});if(error){fire('Error');return}fire('Room rep updated');loadRota(roomId)}
+  function sheetHtml(rd){const rep=rd.rep?rd.rep.name:'—'
+    const counts=(rd.occupants||[]).map(o=>o.days);const uniq=[...new Set(counts.filter(n=>n>0))]
+    let banner='';if((rd.occupants||[]).length===1&&counts[0]===7){banner=(rd.occupants[0].name+' is on duty all 7 days every week').toUpperCase()}
+    else if(uniq.length===1&&uniq[0]>0){banner='Equal duties: each student is on duty '+uniq[0]+' day'+(uniq[0]>1?'s':'')+' every week'.toUpperCase()}
+    else {banner=(rd.occupants||[]).filter(o=>o.days>0).map(o=>o.name+' ('+o.days+'d)').join(' · ')}
+    const rowsHtml=DOW_NAMES.map((dn,i)=>{const names=(rd.by_dow[i+1]||[]).map(x=>bEsc(x.name)).join(', ');return '<tr><td class="day">'+dn+'</td><td class="stu">'+(names||'—')+'</td></tr>'}).join('')
+    const tidy=[['BEDS','Make beds and keep bedding neat.'],['BELONGINGS','Put clothes and belongings away.'],['FLOORS','Keep floors and walkways clear.'],['SURFACES','Wipe shelves and window sills.'],['RUBBISH','Use the bin; empty it when needed.'],['SAFETY','Report damage, leaks or concerns to a supervisor.']]
+    const tidyHtml=tidy.map(t=>'<div class="tc"><span class="tcl">'+t[0]+'</span><span class="tcd">'+t[1]+'</span></div>').join('')
+    const css='@page{size:A4;margin:14mm}*{box-sizing:border-box}body{font-family:Arial,Helvetica,sans-serif;color:#1B2438;margin:0}.hd{background:#14294D;color:#fff;border-bottom:6px solid #C4A24C;padding:16px 18px;text-align:center}.hd .org{font-size:12px;letter-spacing:2px;opacity:.85}.hd h1{font-family:Georgia,serif;font-size:26px;margin:6px 0 2px;letter-spacing:1px}.hd .sub{font-size:11px;opacity:.8}.rep{background:#EEF1F6;border-radius:8px;padding:12px 14px;margin:16px 0}.rep b{color:#14294D;font-size:14px}.rep p{margin:4px 0 0;font-size:11px;color:#55606F}.sec{font-size:13px;font-weight:700;color:#3A4660;letter-spacing:1px;margin:16px 0 6px}table{width:100%;border-collapse:collapse}td{padding:10px 12px;font-size:12px;border-bottom:1px solid #E3E6EC}tr:nth-child(odd) td{background:#EEF1F6}td.day{font-weight:700;color:#1B2438;width:32%}td.stu{color:#333}.banner{background:#9A7A33;color:#fff;text-align:center;font-weight:700;font-size:12px;letter-spacing:1px;padding:10px;border-radius:7px;margin:12px 0 4px}.tc{display:flex;border-bottom:1px solid #E3E6EC;padding:7px 2px;font-size:11px}.tcl{width:28%;font-weight:700;color:#3A4660;letter-spacing:.5px}.tcd{color:#55606F}.foot{margin-top:12px;color:#9A948A;font-size:9px;text-align:center}'
+    return '<section style="page-break-after:always"><div class="hd"><div class="org">AL JAMIATUL ISLAMIYAH</div><h1>'+bEsc(rd.room_name)+' WEEKLY CLEANING ROTA</h1><div class="sub">Repeat the same rota every week</div></div>'+
+      '<div class="rep"><b>ROOM REPRESENTATIVE: '+bEsc((rep||'—').toUpperCase())+'</b><p>'+bEsc(rep)+' checks the room and takes a full turn on the rota below.</p></div>'+
+      '<div class="sec">DAILY CLEANING DUTIES</div><table><tr><td class="day" style="background:#3A4660;color:#fff">DAY</td><td class="stu" style="background:#3A4660;color:#fff">STUDENTS ON DUTY</td></tr>'+rowsHtml+'</table>'+
+      '<div class="banner">'+bEsc(banner.toUpperCase())+'</div>'+
+      '<div class="sec">DAILY ROOM TIDY CHECK</div>'+tidyHtml+
+      '<div class="foot">Al Jamiatul Islamiyah · Bolton Darul Uloom · Printed from Parent Hub '+new Date().toLocaleDateString('en-GB')+'</div></section>'}
+  function printOne(){if(!data)return;const w=window.open('','_blank');if(!w){fire('Allow pop-ups to print');return}
+    w.document.write('<!doctype html><html><head><meta charset="utf-8"><title>'+bEsc(data.room_name)+' Cleaning Rota</title></head><body>'+sheetHtml(data)+'</body></html>');w.document.close();w.focus();setTimeout(()=>{try{w.print()}catch(e){}},400)}
+  async function printAll(){const rs=(rooms||[]);const parts=[];for(const r of rs){const {data:rd}=await sb.functions.invoke('boarding-manage',{body:{action:'rota_get',room_id:r.id}});if(rd&&(rd.occupants||[]).length)parts.push(sheetHtml(rd))}
+    if(!parts.length){fire('No rotas to print yet');return}
+    const w=window.open('','_blank');if(!w){fire('Allow pop-ups to print');return}
+    w.document.write('<!doctype html><html><head><meta charset="utf-8"><title>Cleaning Rotas</title></head><body>'+parts.join('')+'</body></html>');w.document.close();w.focus();setTimeout(()=>{try{w.print()}catch(e){}},600)}
+  const occ=data?(data.occupants||[]):[]
+  return html`<div>
+    <p class="muted" style=${{fontSize:12,marginTop:0}}>The weekly cleaning rota for each room — the same rota repeats every week. Print a room's sheet to put up on the wall.</p>
+    <div style=${{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap',marginBottom:10}}>
+      <select class="in" style=${{width:'auto',marginTop:0}} value=${roomId} onChange=${e=>setRoomId(e.target.value)}>${(rooms||[]).map(r=>html`<option key=${r.id} value=${r.id}>${r.name}</option>`)}</select>
+      <button class="chip" onClick=${printOne}>🖨 Print this room</button>
+      <button class="chip" onClick=${printAll}>🖨 Print all</button>
+      ${isAdmin&&html`<button class="chip ${edit?'on':''}" onClick=${()=>setEdit(!edit)}>${edit?'Done editing':'Edit'}</button>`}
+    </div>
+    ${data===null&&html`<div class="muted">Loading…</div>`}
+    ${data&&html`<div>
+      <div class="card" style=${{padding:'10px 12px',marginBottom:10}}>
+        <div style=${{fontSize:12,color:C.muted}}>Room representative</div>
+        <div style=${{fontWeight:700,color:C.navy}}>${data.rep?data.rep.name:'— not set —'}</div>
+        ${edit&&html`<div style=${{display:'flex',gap:6,flexWrap:'wrap',marginTop:8}}>${occ.map(o=>html`<button key=${o.pupil_id} class="chip ${data.rep&&data.rep.pupil_id===o.pupil_id?'on':''}" onClick=${()=>setRep(o.pupil_id)}>${o.name}</button>`)}</div>`}
+      </div>
+      ${occ.length===0&&html`<div class="card muted" style=${{padding:14}}>No pupils assigned to this room yet${isAdmin?' — add them in Rooms & occupants':''}.</div>`}
+      ${DOW_NAMES.map((dn,i)=>{const names=(data.by_dow[i+1]||[]);const onIds=names.map(x=>x.pupil_id);return html`<div key=${dn} class="card" style=${{padding:'10px 12px',marginBottom:6}}>
+        <div style=${{display:'flex',justifyContent:'space-between',alignItems:'baseline'}}><b>${dn}</b><span class="muted" style=${{fontSize:11}}>${names.length} on duty</span></div>
+        ${!edit?html`<div style=${{marginTop:4,fontSize:13}}>${names.length?names.map(x=>x.name).join(', '):html`<span class="muted">—</span>`}</div>`
+          :html`<div style=${{display:'flex',gap:6,flexWrap:'wrap',marginTop:8}}>${occ.map(o=>html`<button key=${o.pupil_id} class="chip ${onIds.includes(o.pupil_id)?'on':''}" onClick=${()=>toggleDay(i+1,o.pupil_id)}>${o.name}</button>`)}</div>`}
       </div>`})}
-    ${toast&&html`<div style=${{position:'fixed',left:'50%',bottom:24,transform:'translateX(-50%)',background:'#0E1D38',color:'#fff',padding:'10px 16px',borderRadius:999,fontSize:14,maxWidth:'90%',textAlign:'center'}}>${toast}</div>`}
+      ${edit&&occ.length>0&&html`<div class="muted" style=${{fontSize:11,marginTop:4}}>Days on duty each week: ${occ.map(o=>o.name+' ('+o.days+')').join(' · ')}</div>`}
+    </div>`}
+  </div>`}
+
+function BoardingRooms({profile,fire}){
+  const [ref,setRef]=useState(null);const [open,setOpen]=useState(null);const [occ,setOcc]=useState({});const [q,setQ]=useState('')
+  const [nn,setNn]=useState('');const [nb,setNb]=useState('S');const [nf,setNf]=useState('weekly');const [busy,setBusy]=useState(false)
+  async function loadRef(){const {data}=await sb.functions.invoke('boarding-manage',{body:{action:'roster'}});setRef(data)}
+  useEffect(()=>{loadRef()},[])
+  async function openRoom(r){if(open===r.id){setOpen(null);return}setOpen(r.id);const {data}=await sb.functions.invoke('boarding-manage',{body:{action:'occupants_get',room_id:r.id}});setOcc(o=>({...o,[r.id]:(data&&data.occupants)||[]}))}
+  async function reloadOcc(id){const {data}=await sb.functions.invoke('boarding-manage',{body:{action:'occupants_get',room_id:id}});setOcc(o=>({...o,[id]:(data&&data.occupants)||[]}))}
+  async function addOcc(id,pid){await sb.functions.invoke('boarding-manage',{body:{action:'occupant_add',room_id:id,pupil_id:pid}});setQ('');reloadOcc(id);loadRef()}
+  async function removeOcc(id,pid){await sb.functions.invoke('boarding-manage',{body:{action:'occupant_remove',room_id:id,pupil_id:pid}});reloadOcc(id);loadRef()}
+  async function makeRep(id,pid){await sb.functions.invoke('boarding-manage',{body:{action:'set_rep',room_id:id,pupil_id:pid}});reloadOcc(id);fire('Rep set')}
+  async function setFreq(id,freq){await sb.functions.invoke('boarding-check',{body:{action:'set_frequency',room_id:id,check_frequency:freq}});loadRef()}
+  async function toggleActive(r){await sb.functions.invoke('boarding-check',{body:{action:'set_room_active',room_id:r.id,active:!r.is_active}});loadRef()}
+  async function addRoom(){if(!nn.trim()){fire('Room name needed');return}setBusy(true);const {data,error}=await sb.functions.invoke('boarding-check',{body:{action:'add_room',name:nn.trim(),block:nb,check_frequency:nf}});setBusy(false);if(error||(data&&data.error)){fire((data&&data.error)||'Error');return}setNn('');fire('Room added');loadRef()}
+  const rooms=ref?(ref.rooms||[]):[];const boarders=ref?(ref.boarders||[]):[]
+  const blocks=[...new Set(rooms.map(r=>r.block||'Other'))]
+  return html`<div>
+    <p class="muted" style=${{fontSize:12,marginTop:0}}>Assign boarders to each room, choose the room representative, and set how often a room is checked.</p>
+    ${ref===null&&html`<div class="muted">Loading…</div>`}
+    ${blocks.map(bl=>html`<div key=${bl}>
+      <div class="lbl" style=${{marginTop:12}}>${bl==='F'?'F — Main boarding rooms':bl==='S'?'S — S-rooms':bl} block</div>
+      ${rooms.filter(r=>(r.block||'Other')===bl).map(r=>{const isOpen=open===r.id;const list=occ[r.id]||[];const rep=list.find(o=>o.is_rep)
+        return html`<div key=${r.id} class="card" style=${{padding:0,marginBottom:6,overflow:'hidden'}}>
+          <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'10px 12px',cursor:'pointer',gap:8}} onClick=${()=>openRoom(r)}>
+            <div><b>${r.name}</b> ${rep?html`<span class="muted" style=${{fontSize:11}}>· rep ${rep.name}</span>`:''}</div>
+            <div style=${{display:'flex',gap:6,alignItems:'center'}}>
+              <button class="chip ${r.check_frequency==='daily'?'on':''}" onClick=${e=>{e.stopPropagation();setFreq(r.id,'daily')}}>Daily</button>
+              <button class="chip ${r.check_frequency==='weekly'?'on':''}" onClick=${e=>{e.stopPropagation();setFreq(r.id,'weekly')}}>Weekly</button>
+            </div>
+          </div>
+          ${isOpen&&html`<div style=${{padding:'4px 12px 12px',borderTop:'1px solid #EEEAE0'}}>
+            ${list.length?list.map(o=>html`<div key=${o.pupil_id} style=${{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'6px 0',borderTop:'1px solid #F2EFE6'}}>
+              <span>${o.name}${o.is_rep?html`<span class="tag" style=${{background:C.navy,color:'#fff',marginLeft:6,fontSize:9}}>Rep</span>`:''}</span>
+              <div style=${{display:'flex',gap:6}}>${!o.is_rep?html`<button class="chip" onClick=${()=>makeRep(r.id,o.pupil_id)}>Make rep</button>`:''}<button class="chip" style=${{color:C.urgent}} onClick=${()=>removeOcc(r.id,o.pupil_id)}>Remove</button></div>
+            </div>`):html`<div class="muted" style=${{fontSize:12,padding:'6px 0'}}>No pupils assigned.</div>`}
+            <div class="lbl" style=${{marginTop:10}}>Add a boarder</div>
+            <input class="in" placeholder="Search boarder name…" value=${q} onInput=${e=>setQ(e.target.value)}/>
+            ${q&&html`<div style=${{marginTop:6}}>${boarders.filter(b=>b.name.toLowerCase().includes(q.toLowerCase())&&!list.some(o=>o.pupil_id===b.id)).slice(0,8).map(b=>html`<div key=${b.id} class="card" style=${{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'7px 10px',marginBottom:5,cursor:'pointer'}} onClick=${()=>addOcc(r.id,b.id)}><span>${b.name}</span>${b.room?html`<span class="muted" style=${{fontSize:11}}>in ${b.room}</span>`:html`<span class="chip">Add</span>`}</div>`)}</div>`}
+            <div style=${{marginTop:10}}><button class="chip" style=${{color:r.is_active?C.urgent:C.green}} onClick=${()=>toggleActive(r)}>${r.is_active?'Deactivate room':'Reactivate room'}</button></div>
+          </div>`}
+        </div>`})}
+    </div>`)}
+    <div class="card" style=${{padding:14,marginTop:14}}>
+      <div class="lbl">Add a room</div>
+      <input class="in" placeholder="Room name (e.g. S11)" value=${nn} onInput=${e=>setNn(e.target.value)}/>
+      <div style=${{display:'flex',gap:8,marginTop:8,flexWrap:'wrap'}}>
+        <div><div class="muted" style=${{fontSize:11,marginBottom:3}}>Block</div><div style=${{display:'flex',gap:6}}>${['F','S'].map(b=>html`<button key=${b} class="chip ${nb===b?'on':''}" onClick=${()=>setNb(b)}>${b}</button>`)}</div></div>
+        <div><div class="muted" style=${{fontSize:11,marginBottom:3}}>Frequency</div><div style=${{display:'flex',gap:6}}>${['daily','weekly'].map(f=>html`<button key=${f} class="chip ${nf===f?'on':''}" onClick=${()=>setNf(f)}>${f}</button>`)}</div></div>
+      </div>
+      <button class="btn" style=${{marginTop:10}} disabled=${busy} onClick=${addRoom}>${busy?'Adding…':'Add room'}</button>
+    </div>
+  </div>`}
+
+function BoardingDamage({profile,fire}){
+  const isAdmin=profile.role==='admin'
+  const today=new Date().toISOString().slice(0,10)
+  const [ref,setRef]=useState({rooms:[],boarders:[]});const [scope,setScope]=useState('open');const [rows,setRows]=useState(null);const [tot,setTot]=useState(0)
+  const [showAdd,setShowAdd]=useState(false);const [busy,setBusy]=useState(false);const [pq,setPq]=useState('')
+  const blank={log_date:today,room_id:'',area:'',item:'',item_other:'',description:'',pupil_id:'',reported_by_name:'',reporter_other:'',replacement_cost:'',money_received:false,money_received_note:''}
+  const [f,setF]=useState(blank)
+  async function loadRef(){const {data}=await sb.functions.invoke('boarding-manage',{body:{action:'roster'}});setRef(data||{rooms:[],boarders:[]})}
+  async function loadList(){setRows(null);const {data}=await sb.functions.invoke('boarding-manage',{body:{action:'damage_list',scope}});setRows((data&&data.rows)||[]);setTot((data&&data.open_total)||0)}
+  useEffect(()=>{loadRef()},[]);useEffect(()=>{loadList()},[scope])
+  async function add(){const item=f.item==='Other'?(f.item_other.trim()||'Other'):f.item;if(!f.item){fire('Choose what was damaged');return}
+    const reported=f.reported_by_name==='Other'?f.reporter_other.trim():f.reported_by_name
+    setBusy(true);const {data,error}=await sb.functions.invoke('boarding-manage',{body:{action:'damage_add',log_date:f.log_date,room_id:f.room_id||null,area:f.area,item,item_other:f.item==='Other'?f.item_other:'',description:f.description,pupil_id:f.pupil_id||null,reported_by_name:reported,replacement_cost:f.replacement_cost,money_received:f.money_received,money_received_note:f.money_received_note}})
+    setBusy(false);if(error||(data&&data.error)){fire((data&&data.error)||'Error');return}fire('Damage logged');setF(blank);setPq('');setShowAdd(false);loadList()}
+  async function received(r,val){await sb.functions.invoke('boarding-manage',{body:{action:'damage_update',id:r.id,money_received:val}});loadList()}
+  async function del(r){if(!window.confirm('Delete this damage entry?'))return;await sb.functions.invoke('boarding-manage',{body:{action:'damage_delete',id:r.id}});loadList()}
+  const money=n=>n==null?'':'£'+Number(n).toFixed(2)
+  const pupilName=ref.boarders.find(b=>b.id===f.pupil_id)
+  return html`<div>
+    <p class="muted" style=${{fontSize:12,marginTop:0}}>Log damage in the boarding house — what was damaged, who reported it, the cost to replace, and whether the money has come in from parents.</p>
+    <div style=${{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap',marginBottom:10}}>
+      <button class="btn" style=${{width:'auto',padding:'8px 14px'}} onClick=${()=>setShowAdd(!showAdd)}>${showAdd?'Close':'＋ Log damage'}</button>
+      <div style=${{display:'flex',gap:6,marginLeft:'auto'}}>${[['open','Outstanding'],['month','This month'],['all','All']].map(([k,l])=>html`<button key=${k} class="chip ${scope===k?'on':''}" onClick=${()=>setScope(k)}>${l}</button>`)}</div>
+    </div>
+    ${showAdd&&html`<div class="card" style=${{padding:14,marginBottom:12}}>
+      <div style=${{display:'flex',gap:8,flexWrap:'wrap'}}>
+        <div style=${{flex:'1 1 130px'}}><div class="lbl">Date</div><input class="in" type="date" value=${f.log_date} onInput=${e=>setF({...f,log_date:e.target.value})}/></div>
+        <div style=${{flex:'1 1 130px'}}><div class="lbl">Room / area</div><select class="in" value=${f.room_id} onChange=${e=>setF({...f,room_id:e.target.value})}><option value="">Other area…</option>${ref.rooms.map(r=>html`<option key=${r.id} value=${r.id}>${r.name}</option>`)}</select></div>
+      </div>
+      ${!f.room_id&&html`<input class="in" style=${{marginTop:8}} placeholder="Area (e.g. corridor, bathroom)" value=${f.area} onInput=${e=>setF({...f,area:e.target.value})}/>`}
+      <div class="lbl" style=${{marginTop:10}}>What was damaged</div>
+      <select class="in" value=${f.item} onChange=${e=>setF({...f,item:e.target.value})}><option value="">- choose -</option>${DAMAGE_ITEMS.map(it=>html`<option key=${it} value=${it}>${it}</option>`)}</select>
+      ${f.item==='Other'&&html`<input class="in" style=${{marginTop:8}} placeholder="Describe the item" value=${f.item_other} onInput=${e=>setF({...f,item_other:e.target.value})}/>`}
+      <div class="lbl" style=${{marginTop:10}}>Details <span class="muted" style=${{fontWeight:400}}>(optional)</span></div>
+      <textarea class="in" style=${{minHeight:44,resize:'vertical',fontFamily:'inherit'}} placeholder="What happened / extent of the damage…" value=${f.description} onInput=${e=>setF({...f,description:e.target.value})}></textarea>
+      <div class="lbl" style=${{marginTop:10}}>Reported by</div>
+      <select class="in" value=${f.reported_by_name} onChange=${e=>setF({...f,reported_by_name:e.target.value})}><option value="">- choose -</option>${DAMAGE_REPORTERS.map(n=>html`<option key=${n} value=${n}>${n}</option>`)}<option value="Other">Other…</option></select>
+      ${f.reported_by_name==='Other'&&html`<input class="in" style=${{marginTop:8}} placeholder="Name" value=${f.reporter_other} onInput=${e=>setF({...f,reporter_other:e.target.value})}/>`}
+      <div class="lbl" style=${{marginTop:10}}>Pupil responsible <span class="muted" style=${{fontWeight:400}}>(optional)</span></div>
+      ${f.pupil_id?html`<div style=${{display:'flex',justifyContent:'space-between',alignItems:'center'}}><b>${pupilName?pupilName.name:''}</b><button class="chip" onClick=${()=>{setF({...f,pupil_id:''});setPq('')}}>Change</button></div>`
+        :html`<input class="in" placeholder="Search boarder…" value=${pq} onInput=${e=>setPq(e.target.value)}/>`}
+      ${!f.pupil_id&&pq&&html`<div style=${{marginTop:6}}>${ref.boarders.filter(b=>b.name.toLowerCase().includes(pq.toLowerCase())).slice(0,6).map(b=>html`<div key=${b.id} class="card" style=${{padding:'7px 10px',marginBottom:5,cursor:'pointer'}} onClick=${()=>{setF({...f,pupil_id:b.id});setPq('')}}>${b.name}${b.room?html`<span class="muted" style=${{fontSize:11}}> · ${b.room}</span>`:''}</div>`)}</div>`}
+      <div style=${{display:'flex',gap:8,flexWrap:'wrap',marginTop:10}}>
+        <div style=${{flex:'1 1 120px'}}><div class="lbl">Cost to replace (£)</div><input class="in" type="number" step="0.01" placeholder="0.00" value=${f.replacement_cost} onInput=${e=>setF({...f,replacement_cost:e.target.value})}/></div>
+      </div>
+      <label style=${{display:'flex',gap:8,alignItems:'center',marginTop:10,fontSize:13,cursor:'pointer'}}><input type="checkbox" checked=${f.money_received} onChange=${e=>setF({...f,money_received:e.target.checked})}/><span>Money received from parents</span></label>
+      ${f.money_received&&html`<input class="in" style=${{marginTop:8}} placeholder="Note (e.g. date / method received)" value=${f.money_received_note} onInput=${e=>setF({...f,money_received_note:e.target.value})}/>`}
+      <button class="btn" style=${{marginTop:12}} disabled=${busy} onClick=${add}>${busy?'Saving…':'Save damage entry'}</button>
+    </div>`}
+    ${scope!=='all'&&tot>0&&html`<div class="card" style=${{padding:'8px 12px',marginBottom:10,background:C.goldSoft,border:'1px solid '+C.gold,fontSize:13}}><b>Outstanding to collect: ${money(tot)}</b></div>`}
+    ${rows===null&&html`<div class="muted">Loading…</div>`}
+    ${rows&&rows.length===0&&html`<div class="card muted" style=${{padding:16}}>${scope==='open'?'Nothing outstanding — all damage has been settled.':'No damage logged.'}</div>`}
+    ${(rows||[]).map(r=>html`<div key=${r.id} class="card" style=${{padding:'10px 12px',marginBottom:6}}>
+      <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8}}>
+        <div><b>${r.item}</b> <span class="muted" style=${{fontSize:12}}>· ${r.room_name||'—'}</span></div>
+        ${r.money_received?html`<span class="tag" style=${{background:'#E5EEE7',color:C.green}}>Paid</span>`:html`<span class="tag" style=${{background:C.urgentSoft,color:C.urgent}}>Outstanding</span>`}
+      </div>
+      <div class="muted" style=${{fontSize:12,marginTop:4}}>${bFmtD(r.log_date)}${r.pupil_name?' · '+r.pupil_name:''}${r.reported_by_name?' · reported by '+r.reported_by_name:''}${r.replacement_cost!=null?' · '+money(r.replacement_cost):''}</div>
+      ${r.description?html`<div style=${{fontSize:12,marginTop:3}}>${r.description}</div>`:''}
+      ${r.money_received&&r.money_received_note?html`<div class="muted" style=${{fontSize:11,marginTop:2}}>Received: ${r.money_received_note}</div>`:''}
+      <div style=${{display:'flex',gap:8,marginTop:8}}>
+        ${r.money_received?html`<button class="chip" onClick=${()=>received(r,false)}>Mark unpaid</button>`:html`<button class="chip" onClick=${()=>received(r,true)}>Mark money received</button>`}
+        ${isAdmin&&html`<button class="chip" style=${{color:C.urgent}} onClick=${()=>del(r)}>Delete</button>`}
+      </div>
+    </div>`)}
   </div>`}
 
 const BEHAVIOUR_PERIODS=['1st','2nd','3rd','4th','Other / outside lesson']
@@ -1240,7 +1483,7 @@ function DataProtection({profile}){
 function Dashboard({profile,onSignOut}){
   const [pupils,setPupils]=useState(null);const [classes,setClasses]=useState([]);const [groups,setGroups]=useState([])
   const [anns,setAnns]=useState([]);const [tab,setTab]=useState('overview');const [q,setQ]=useState('');const [toast,setToast]=useState('')
-  const [editPupil,setEditPupil]=useState(null);const canManage=profile.role==='admin';const canIncident=canReportIncident(profile);const canBoarding=canBoardingCheck(profile);const canSup=canSupervisor(profile);const canMedFire=canBoardTeam(profile);const canKit=canKitchen(profile)
+  const [editPupil,setEditPupil]=useState(null);const canManage=profile.role==='admin';const canIncident=canReportIncident(profile);const canBoarding=canBoardingCheck(profile)||canBoardingDamage(profile);const canSup=canSupervisor(profile);const canMedFire=canBoardTeam(profile);const canKit=canKitchen(profile)
   const fire=m=>{setToast(m);setTimeout(()=>setToast(''),3200)}
   async function load(){const [p,c,g,a]=await Promise.all([
     sb.from('pupils').select('*').order('last_name'),
