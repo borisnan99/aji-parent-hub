@@ -1506,8 +1506,8 @@ function Dashboard({profile,onSignOut}){
         <div style=${{color:'#AEBAD0',fontSize:10}}>Al Jamiatul Islamiyah</div></div></div>
       <button onClick=${onSignOut} style=${{background:'transparent',border:'1px solid rgba(255,255,255,.3)',color:'#fff',borderRadius:10,padding:'6px 10px',fontSize:12,cursor:'pointer'}}>Sign out</button></div>
     <div style=${{height:3,background:`linear-gradient(90deg,${C.gold},${C.goldSoft})`}}></div>
-    <div style=${{padding:'8px 16px 0',display:'flex',gap:8,flexWrap:'wrap'}}>${['overview','pupils','attendance','league',...(canManage?['engagement']:[]),'praise','detentions','behaviour','safeguarding',...(canMedFire?['medical','firedrills']:[]),...(canIncident?['incidents']:[]),...(canBoarding?['boarding']:[]),...(canSup?['supervisor']:[]),...(canKit?['kitchen']:[]),...(canManage?['dataprotection','users']:[]),'announce','inbox'].map(t=>html`
-      <button key=${t} onClick=${()=>setTab(t)} class="chip ${tab===t?'on':''}">${t==='overview'?'Overview':t==='pupils'?'Pupils':t==='attendance'?'Attendance':t==='league'?'League':t==='engagement'?'Engagement':t==='praise'?'Praise':t==='detentions'?'Detentions':t==='behaviour'?'Behaviour':t==='safeguarding'?'Safeguarding':t==='medical'?'Medical':t==='firedrills'?'Fire drills':t==='incidents'?'Injuries':t==='boarding'?'Boarding':t==='supervisor'?'Supervisor':t==='kitchen'?'Kitchen':t==='dataprotection'?'Data protection':t==='users'?'Users':t==='announce'?'Announce':'Inbox'}</button>`)}</div>
+    <div style=${{padding:'8px 16px 0',display:'flex',gap:8,flexWrap:'wrap'}}>${['overview','pupils','attendance','league',...(canManage?['engagement']:[]),'praise','detentions','behaviour','safeguarding',...(canMedFire?['medical','firedrills']:[]),...(canIncident?['incidents']:[]),...(canBoarding?['boarding']:[]),...(canSup?['supervisor']:[]),...(canKit?['kitchen']:[]),...(canManage?['marks','dataprotection','users']:[]),'announce','inbox'].map(t=>html`
+      <button key=${t} onClick=${()=>setTab(t)} class="chip ${tab===t?'on':''}">${t==='overview'?'Overview':t==='pupils'?'Pupils':t==='attendance'?'Attendance':t==='league'?'League':t==='engagement'?'Engagement':t==='praise'?'Praise':t==='detentions'?'Detentions':t==='behaviour'?'Behaviour':t==='safeguarding'?'Safeguarding':t==='medical'?'Medical':t==='firedrills'?'Fire drills':t==='incidents'?'Injuries':t==='boarding'?'Boarding':t==='supervisor'?'Supervisor':t==='kitchen'?'Kitchen':t==='marks'?'Exam marks':t==='dataprotection'?'Data protection':t==='users'?'Users':t==='announce'?'Announce':'Inbox'}</button>`)}</div>
     <div style=${{padding:16}}>
       ${pupils===null&&html`<div class="muted">Loading live data…</div>`}
       ${tab==='overview'&&pupils&&html`<div>
@@ -1551,6 +1551,7 @@ function Dashboard({profile,onSignOut}){
       ${tab==='kitchen'&&canKit&&html`<${Kitchen} profile=${profile}/>`}
       ${tab==='dataprotection'&&canManage&&html`<${DataProtection} profile=${profile}/>`}
       ${tab==='users'&&canManage&&html`<${Users} profile=${profile}/>`}
+      ${tab==='marks'&&canManage&&html`<${WeeklyMarks} profile=${profile}/>`}
       ${editPupil&&html`<${PupilEditor} pupil=${editPupil} classes=${classes} onClose=${()=>setEditPupil(null)} onSaved=${m=>{setEditPupil(null);fire(m);load()}}/>`}
     </div>
     <${PrivacyFooter} staff=${true}/>
@@ -1997,6 +1998,70 @@ function Users({profile}){
     <div class="lbl">Staff & admins</div>
     ${staff===null&&html`<div class="muted">Loading…</div>`}
     ${(staff||[]).map(row)}
+    ${toast&&html`<div style=${{position:'fixed',left:'50%',bottom:24,transform:'translateX(-50%)',background:'#0E1D38',color:'#fff',padding:'10px 16px',borderRadius:999,fontSize:14,maxWidth:'90%',textAlign:'center'}}>${toast}</div>`}
+  </div>`}
+
+function WeeklyMarks({profile}){
+  const [week,setWeek]=useState('')
+  const [raw,setRaw]=useState('')
+  const [preview,setPreview]=useState(null)
+  const [sentInfo,setSentInfo]=useState(null)
+  const [busy,setBusy]=useState(false);const [toast,setToast]=useState('')
+  const fire=m=>{setToast(m);setTimeout(()=>setToast(''),4200)}
+  const BAD=/^(class\s*average|average|total|mean|student\s*name)\b/i
+  function parseRows(){
+    return raw.split(/\r?\n/).map(l=>l.trim()).filter(Boolean).map(line=>{
+      const m=line.match(/^(.*?)[\s,;\t]+(-?\d+(?:\.\d+)?)\s*$/)
+      if(!m)return null
+      const name=m[1].trim().replace(/[,;\t]+$/,'').trim()
+      if(!name||BAD.test(name))return null
+      return {name,mark:Number(m[2])}
+    }).filter(r=>r&&!isNaN(r.mark))
+  }
+  const rows=parseRows()
+  function changed(fn){return e=>{fn(e.target.value);setPreview(null);setSentInfo(null)}}
+  async function doPreview(){if(!rows.length){fire('Paste some marks first');return}setBusy(true);setSentInfo(null)
+    const {data,error}=await sb.functions.invoke('send-exam-marks',{body:{week_label:week,rows,dry_run:true}})
+    setBusy(false);if(error||(data&&data.error)){fire((data&&data.error)||'Error');return}setPreview(data)}
+  async function doSend(){if(!preview)return
+    if(!window.confirm('Send '+preview.matched+' mark'+(preview.matched===1?'':'s')+' to parents now?\n\nThis emails each boy’s parent(s) and cannot be undone.'))return
+    setBusy(true);const {data,error}=await sb.functions.invoke('send-exam-marks',{body:{week_label:week,rows,dry_run:false}})
+    setBusy(false);if(error||(data&&data.error)){fire((data&&data.error)||'Error sending');return}
+    setSentInfo(data);setPreview(null);fire('Sent '+data.sent+' email'+(data.sent===1?'':'s'))}
+  return html`<div>
+    <h2 class="serif" style=${{color:C.navy,marginTop:4}}>Weekly exam marks</h2>
+    <p class="muted" style=${{fontSize:12,marginTop:0,lineHeight:1.5}}>Paste one pupil per line — name then the mark (e.g. copy the Name and mark columns straight from your sheet). Preview first to check the matches, then send. Each boy’s parent(s) get the mark out of 10 with the class average and praise, from Muallim Luqmān Amla.</p>
+    <div class="card" style=${{padding:14,marginBottom:12}}>
+      <div class="lbl">Week <span class="muted" style=${{fontWeight:400}}>(optional, for your reference)</span></div>
+      <input class="in" placeholder="e.g. Week 5" value=${week} onInput=${changed(setWeek)}/>
+      <div class="lbl" style=${{marginTop:12}}>Marks</div>
+      <textarea class="in" style=${{minHeight:150,resize:'vertical',fontFamily:'ui-monospace,Menlo,Consolas,monospace',fontSize:13,whiteSpace:'pre'}} placeholder=${"Abdullah Chaudhry   8\nAbu Bakr Amla   9\nAshir Khan   6\n…"} value=${raw} onInput=${changed(setRaw)}></textarea>
+      <div class="muted" style=${{fontSize:12,marginTop:6}}>${rows.length} mark${rows.length===1?'':'s'} detected${rows.length?' · average '+(rows.reduce((s,r)=>s+r.mark,0)/rows.length).toFixed(1):''}. Summary rows like “Class average” are ignored.</div>
+      <button class="btn" style=${{marginTop:12}} disabled=${busy||!rows.length} onClick=${doPreview}>${busy&&!preview?'Checking…':'Preview matches'}</button>
+    </div>
+
+    ${preview&&html`<div class="card" style=${{padding:14,marginBottom:12,border:'1px solid '+C.gold}}>
+      <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:8}}>
+        <b class="serif" style=${{color:C.navy,fontSize:16}}>Preview — nothing sent yet</b>
+        <span class="tag" style=${{background:C.navy,color:'#fff',padding:'4px 10px'}}>Class average ${preview.class_average} / 10</span>
+      </div>
+      <div class="muted" style=${{fontSize:12,margin:'6px 0 10px'}}>${preview.matched} matched to a parent${preview.unmatched&&preview.unmatched.length?' · '+preview.unmatched.length+' unmatched':''}${preview.no_parent&&preview.no_parent.length?' · '+preview.no_parent.length+' with no parent email':''}</div>
+      ${preview.unmatched&&preview.unmatched.length>0&&html`<div class="card" style=${{padding:'8px 11px',marginBottom:8,background:C.urgentSoft,border:'1px solid '+C.urgent}}><b style=${{color:C.urgent,fontSize:12}}>Not matched (won’t be sent):</b> <span style=${{fontSize:12}}>${preview.unmatched.join(', ')}</span></div>`}
+      ${preview.no_parent&&preview.no_parent.length>0&&html`<div class="card" style=${{padding:'8px 11px',marginBottom:8,background:'#FBECC9',border:'1px solid #E3C97E'}}><b style=${{color:'#8A6D1B',fontSize:12}}>No parent email (won’t be sent):</b> <span style=${{fontSize:12}}>${preview.no_parent.join(', ')}</span></div>`}
+      <div style=${{maxHeight:230,overflow:'auto',border:'1px solid '+C.line,borderRadius:10}}>
+        ${(preview.preview||[]).map((r,i)=>html`<div key=${i} style=${{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'7px 11px',borderTop:i?'1px solid #F2EFE6':'none'}}>
+          <span style=${{fontSize:13}}>${r.name}</span>
+          <span style=${{display:'flex',gap:10,alignItems:'center'}}><b style=${{color:C.navy}}>${r.mark}/10</b><span class="muted" style=${{fontSize:11}}>${(r.to||[]).length} recipient${(r.to||[]).length===1?'':'s'}</span></span>
+        </div>`)}
+      </div>
+      <button class="btn" style=${{marginTop:12,background:C.green}} disabled=${busy||!preview.matched} onClick=${doSend}>${busy?'Sending…':'✓ Send '+preview.matched+' to parents'}</button>
+      <div class="muted" style=${{fontSize:11,marginTop:6,textAlign:'center'}}>This cannot be undone.</div>
+    </div>`}
+
+    ${sentInfo&&html`<div class="card" style=${{padding:14,marginBottom:12,background:'#E5EEE7',border:'1px solid '+C.green}}>
+      <b style=${{color:C.green}}>✓ Sent ${sentInfo.sent} email${sentInfo.sent===1?'':'s'} to parents.</b>
+      <div class="muted" style=${{fontSize:12,marginTop:4}}>Class average ${sentInfo.class_average} / 10 · ${sentInfo.matched} pupils${sentInfo.unmatched&&sentInfo.unmatched.length?' · '+sentInfo.unmatched.length+' unmatched (not sent): '+sentInfo.unmatched.join(', '):''}</div>
+    </div>`}
     ${toast&&html`<div style=${{position:'fixed',left:'50%',bottom:24,transform:'translateX(-50%)',background:'#0E1D38',color:'#fff',padding:'10px 16px',borderRadius:999,fontSize:14,maxWidth:'90%',textAlign:'center'}}>${toast}</div>`}
   </div>`}
 
