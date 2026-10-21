@@ -180,7 +180,7 @@ function PupilEditor({pupil,classes,onClose,onSaved}){
   const [guardians,setGuardians]=useState(null);const [pEmail,setPEmail]=useState('');const [pName,setPName]=useState('');const [pBusy,setPBusy]=useState(false);const [pMsg,setPMsg]=useState('')
   const [emailDraft,setEmailDraft]=useState({});const [gBusy,setGBusy]=useState('');const [numEdit,setNumEdit]=useState(null);const [numDraft,setNumDraft]=useState({})
   async function loadGuardians(){if(isNew||!pupil.id)return;const {data}=await sb.functions.invoke('user-admin',{body:{action:'pupil_card',pupil_id:pupil.id}});const gs=(data&&data.guardians)||[];setGuardians(gs);const ed={};gs.forEach(g=>{ed[g.parent_id]=g.email||''});setEmailDraft(ed)}
-  async function setPreferred(pid){setGBusy('pref-'+pid);const {data,error}=await sb.functions.invoke('user-admin',{body:{action:'set_preferred',pupil_id:pupil.id,parent_id:pid}});setGBusy('');if(error||(data&&data.error)){setPMsg((data&&data.error)||'Error');return}setPMsg('Preferred contact updated ✓');loadGuardians()}
+  async function setPreferred(cid){setGBusy('pref-'+cid);const {data,error}=await sb.functions.invoke('user-admin',{body:{action:'set_preferred',pupil_id:pupil.id,contact_id:cid}});setGBusy('');if(error||(data&&data.error)){setPMsg((data&&data.error)||'Error');return}setPMsg('Preferred contact updated ✓');loadGuardians()}
   async function saveEmail(pid){const em=(emailDraft[pid]||'').trim();if(!em||!em.includes('@')){setPMsg('Enter a valid email');return}setGBusy('em-'+pid);const {data,error}=await sb.functions.invoke('user-admin',{body:{action:'parent_email',parent_id:pid,email:em}});setGBusy('');if(error||(data&&data.error)){setPMsg((data&&data.error)||'Error');return}setPMsg('Email updated ✓');loadGuardians()}
   function startNum(c){setNumEdit('c-'+c.id);setNumDraft({id:c.id,parent_id:null,label:c.label||'',name:c.name||'',mobile:c.mobile||''})}
   function startAddNum(pid){setNumEdit('new-'+pid);setNumDraft({id:null,parent_id:pid,label:'',name:'',mobile:''})}
@@ -235,13 +235,10 @@ function PupilEditor({pupil,classes,onClose,onSaved}){
         <button class="chip ${active?'on':''}" onClick=${()=>setActive(a=>!a)}>${active?'On roll':'Left'}</button></div>`}
       ${!isNew&&html`<div style=${{marginTop:16,borderTop:'1px solid '+C.line,paddingTop:14}}>
         <div class="lbl" style=${{marginBottom:2}}>Parents / Guardians & contacts</div>
-        <div class="muted" style=${{fontSize:11,marginBottom:8,lineHeight:1.5}}>Set who the preferred contact is, correct the email we send exam marks & announcements to, and tap a number to call it.</div>
+        <div class="muted" style=${{fontSize:11,marginBottom:8,lineHeight:1.5}}>Tap ☆ <b>Make preferred</b> under a number to choose the main contact, correct the email we send exam marks & announcements to, or tap a number to call it.</div>
         ${guardians===null?html`<div class="muted" style=${{fontSize:12}}>Loading…</div>`:guardians.length===0?html`<div class="muted" style=${{fontSize:12}}>No parents linked yet — add one below.</div>`:''}
-        ${(guardians||[]).map(g=>html`<div key=${g.parent_id} class="card" style=${{padding:'10px 12px',marginBottom:8,border:'1px solid '+(g.is_primary?C.gold:C.line)}}>
-          <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8}}>
-            <b style=${{fontSize:14,minWidth:0}}>${g.full_name||'Parent'}</b>
-            ${g.is_primary?html`<span class="tag" style=${{background:C.goldSoft,color:C.navy,flexShrink:0}}>Preferred contact</span>`:html`<button class="chip" style=${{flexShrink:0}} disabled=${gBusy==='pref-'+g.parent_id} onClick=${()=>setPreferred(g.parent_id)}>${gBusy==='pref-'+g.parent_id?'…':'Set as preferred'}</button>`}
-          </div>
+        ${(guardians||[]).map(g=>html`<div key=${g.parent_id} class="card" style=${{padding:'10px 12px',marginBottom:8,border:'1px solid '+((g.numbers||[]).some(c=>c.is_preferred)?C.gold:C.line)}}>
+          <b style=${{fontSize:14}}>${g.full_name||'Parent'}</b>
           <div class="lbl" style=${{marginTop:10,fontWeight:600}}>Email</div>
           <div style=${{display:'flex',gap:6,marginTop:4}}>
             <input class="in" type="email" style=${{marginTop:0,flex:1,minWidth:0}} value=${emailDraft[g.parent_id]||''} onInput=${e=>setEmailDraft(d=>({...d,[g.parent_id]:e.target.value}))}/>
@@ -249,12 +246,15 @@ function PupilEditor({pupil,classes,onClose,onSaved}){
           </div>
           <div class="lbl" style=${{marginTop:12,fontWeight:600}}>Phone numbers</div>
           ${(g.numbers||[]).length===0&&numEdit!=='new-'+g.parent_id?html`<div class="muted" style=${{fontSize:12,marginTop:4}}>No number on file.</div>`:''}
-          ${(g.numbers||[]).map(c=> numEdit==='c-'+c.id ? html`<div key=${c.id}>${numForm()}</div>` : html`<div key=${c.id} style=${{display:'flex',gap:6,alignItems:'center',marginTop:6}}>
-              <a href=${'tel:'+(c.mobile||'').replace(/[^\d+]/g,'')} style=${{flex:1,minWidth:0,display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,padding:'9px 11px',border:'1px solid '+C.line,borderRadius:12,textDecoration:'none',color:C.ink}}>
-                <span style=${{minWidth:0}}><b style=${{color:C.navy,fontSize:15}}>${c.mobile}</b><div class="muted" style=${{fontSize:11,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>${[c.label,c.name].filter(Boolean).join(' · ')||'Mobile'}</div></span>
-                <span style=${{flexShrink:0,background:C.green,color:'#fff',borderRadius:999,padding:'6px 12px',fontSize:13,fontWeight:700}}>📞 Call</span>
-              </a>
-              <button class="chip" style=${{flexShrink:0}} onClick=${()=>startNum(c)}>✏️</button>
+          ${(g.numbers||[]).map(c=> numEdit==='c-'+c.id ? html`<div key=${c.id}>${numForm()}</div>` : html`<div key=${c.id} style=${{marginTop:6}}>
+              <div style=${{display:'flex',gap:6,alignItems:'center'}}>
+                <a href=${'tel:'+(c.mobile||'').replace(/[^\d+]/g,'')} style=${{flex:1,minWidth:0,display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,padding:'9px 11px',border:'1px solid '+(c.is_preferred?C.gold:C.line),borderRadius:12,textDecoration:'none',color:C.ink,background:c.is_preferred?'#FCFAF2':'#fff'}}>
+                  <span style=${{minWidth:0}}><b style=${{color:C.navy,fontSize:15}}>${c.mobile}</b><div class="muted" style=${{fontSize:11,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>${[c.label,c.name].filter(Boolean).join(' · ')||'Mobile'}</div></span>
+                  <span style=${{flexShrink:0,background:C.green,color:'#fff',borderRadius:999,padding:'6px 12px',fontSize:13,fontWeight:700}}>📞 Call</span>
+                </a>
+                <button class="chip" style=${{flexShrink:0}} onClick=${()=>startNum(c)}>✏️</button>
+              </div>
+              ${c.is_preferred?html`<div style=${{fontSize:11,marginTop:3,color:'#8A6D1B',fontWeight:700}}>★ Preferred contact</div>`:html`<button class="chip" style=${{marginTop:4,fontSize:11,padding:'3px 10px'}} disabled=${gBusy==='pref-'+c.id} onClick=${()=>setPreferred(c.id)}>${gBusy==='pref-'+c.id?'…':'☆ Make preferred'}</button>`}
             </div>`)}
           ${numEdit==='new-'+g.parent_id?numForm():html`<button class="chip" style=${{marginTop:8}} onClick=${()=>startAddNum(g.parent_id)}>＋ Add number</button>`}
         </div>`)}

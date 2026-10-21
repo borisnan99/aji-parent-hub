@@ -131,22 +131,27 @@ Deno.serve(async (req) => {
       const parentIds = [...new Set((links ?? []).map((l: any) => l.parent_id))];
       const { data: profs } = parentIds.length ? await svc.from("profiles").select("id,full_name,email").in("id", parentIds) : { data: [] };
       const pmap: Record<string, any> = {}; (profs ?? []).forEach((p: any) => (pmap[p.id] = p));
-      const { data: gc } = parentIds.length ? await svc.from("guardian_contacts").select("id,parent_id,label,name,mobile").in("parent_id", parentIds) : { data: [] };
+      const { data: gc } = parentIds.length ? await svc.from("guardian_contacts").select("id,parent_id,label,name,mobile,is_preferred").in("parent_id", parentIds) : { data: [] };
       const byParent: Record<string, any[]> = {};
-      (gc ?? []).forEach((g: any) => { (byParent[g.parent_id] = byParent[g.parent_id] || []).push({ id: g.id, label: g.label || "", name: g.name || "", mobile: g.mobile || "" }); });
+      (gc ?? []).forEach((g: any) => { (byParent[g.parent_id] = byParent[g.parent_id] || []).push({ id: g.id, label: g.label || "", name: g.name || "", mobile: g.mobile || "", is_preferred: !!g.is_preferred }); });
       const guardians = (links ?? []).filter((l: any) => pmap[l.parent_id]).map((l: any) => ({
         parent_id: l.parent_id, full_name: pmap[l.parent_id].full_name || "", email: pmap[l.parent_id].email || "",
-        is_primary: !!l.is_primary, numbers: byParent[l.parent_id] || [],
-      })).sort((a: any, b: any) => (b.is_primary ? 1 : 0) - (a.is_primary ? 1 : 0));
+        numbers: byParent[l.parent_id] || [],
+      }));
       return json({ ok: true, guardians });
     }
 
     if (action === "set_preferred") {
-      // mark one linked parent as the preferred (primary) contact for this pupil
-      const pid = body.pupil_id, parent = body.parent_id;
-      if (!pid || !parent) return json({ error: "pupil_id and parent_id required" }, 400);
-      await svc.from("parent_pupil").update({ is_primary: false }).eq("pupil_id", pid);
-      const { error } = await svc.from("parent_pupil").update({ is_primary: true }).eq("pupil_id", pid).eq("parent_id", parent);
+      // mark one phone number as the preferred contact for this pupil (clears the family's others)
+      const pid = body.pupil_id, contactId = body.contact_id;
+      if (!pid || !contactId) return json({ error: "pupil_id and contact_id required" }, 400);
+      const { data: links } = await svc.from("parent_pupil").select("parent_id").eq("pupil_id", pid);
+      const parentIds = [...new Set((links ?? []).map((l: any) => l.parent_id))];
+      // the chosen number must belong to one of this pupil's linked parents
+      const { data: tgt } = await svc.from("guardian_contacts").select("id,parent_id").eq("id", contactId).maybeSingle();
+      if (!tgt || !parentIds.includes(tgt.parent_id)) return json({ error: "that number isn't linked to this pupil" }, 400);
+      if (parentIds.length) await svc.from("guardian_contacts").update({ is_preferred: false }).in("parent_id", parentIds);
+      const { error } = await svc.from("guardian_contacts").update({ is_preferred: true }).eq("id", contactId);
       if (error) return json({ error: error.message }, 500);
       return json({ ok: true });
     }
