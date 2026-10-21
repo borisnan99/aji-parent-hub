@@ -83,21 +83,44 @@ Deno.serve(async (req) => {
       const { data: pupils } = await svc.from("pupils").select("id,first_name,last_name,academic_year").eq("is_active", true).order("last_name");
       const { data: links } = await svc.from("parent_pupil").select("pupil_id,parent_id,is_primary");
       const parentIds = [...new Set((links ?? []).map((l: any) => l.parent_id))];
-      const { data: gc } = await svc.from("guardian_contacts").select("parent_id,label,name,mobile");
+      const { data: gc } = await svc.from("guardian_contacts").select("id,parent_id,label,name,mobile");
       const { data: profs } = parentIds.length ? await svc.from("profiles").select("id,full_name").in("id", parentIds) : { data: [] };
       const pname: Record<string, string> = {}; (profs ?? []).forEach((p: any) => (pname[p.id] = p.full_name || ""));
       const byParent: Record<string, any[]> = {};
-      (gc ?? []).forEach((g: any) => { const mob = (g.mobile || "").trim(); if (mob) (byParent[g.parent_id] = byParent[g.parent_id] || []).push({ label: g.label || "", name: g.name || "", mobile: mob }); });
+      (gc ?? []).forEach((g: any) => { const mob = (g.mobile || "").trim(); if (mob) (byParent[g.parent_id] = byParent[g.parent_id] || []).push({ id: g.id, label: g.label || "", name: g.name || "", mobile: mob }); });
       const byPupil: Record<string, { pids: Set<string>; primary: Set<string> }> = {};
       (links ?? []).forEach((l: any) => { const e = (byPupil[l.pupil_id] = byPupil[l.pupil_id] || { pids: new Set(), primary: new Set() }); e.pids.add(l.parent_id); if (l.is_primary) e.primary.add(l.parent_id); });
       const out = (pupils ?? []).map((pu: any) => {
         const e = byPupil[pu.id] || { pids: new Set(), primary: new Set() };
         const seen = new Set<string>(); const contacts: any[] = [];
-        [...e.pids].forEach((pid) => (byParent[pid] || []).forEach((c) => { const key = c.mobile.replace(/\s+/g, ""); if (seen.has(key)) return; seen.add(key); contacts.push({ ...c, parent_name: pname[pid] || "", primary: e.primary.has(pid) }); }));
+        [...e.pids].forEach((pid) => (byParent[pid] || []).forEach((c) => { const key = c.mobile.replace(/\s+/g, ""); if (seen.has(key)) return; seen.add(key); contacts.push({ ...c, parent_id: pid, parent_name: pname[pid] || "", primary: e.primary.has(pid) }); }));
         contacts.sort((a, b) => (b.primary ? 1 : 0) - (a.primary ? 1 : 0));
-        return { pupil_id: pu.id, name: `${pu.first_name} ${pu.last_name}`, year: pu.academic_year || "", contacts };
+        const parents = [...e.pids].map((pid) => ({ id: pid, name: pname[pid] || "", primary: e.primary.has(pid) })).sort((a, b) => (b.primary ? 1 : 0) - (a.primary ? 1 : 0));
+        return { pupil_id: pu.id, name: `${pu.first_name} ${pu.last_name}`, year: pu.academic_year || "", contacts, parents };
       });
       return json({ ok: true, pupils: out });
+    }
+
+    if (action === "contact_save") {
+      const mob = (body.mobile || "").trim();
+      if (!mob) return json({ error: "a mobile number is required" }, 400);
+      const fields = { label: (body.label || "").trim() || null, name: (body.name || "").trim() || null, mobile: mob };
+      if (body.id) {
+        const { error } = await svc.from("guardian_contacts").update(fields).eq("id", body.id);
+        if (error) return json({ error: error.message }, 500);
+        return json({ ok: true, id: body.id });
+      }
+      if (!body.parent_id) return json({ error: "no parent linked to attach this number to" }, 400);
+      const { data, error } = await svc.from("guardian_contacts").insert({ parent_id: body.parent_id, ...fields }).select("id").single();
+      if (error) return json({ error: error.message }, 500);
+      return json({ ok: true, id: data.id });
+    }
+
+    if (action === "contact_delete") {
+      if (!body.id) return json({ error: "id required" }, 400);
+      const { error } = await svc.from("guardian_contacts").delete().eq("id", body.id);
+      if (error) return json({ error: error.message }, 500);
+      return json({ ok: true });
     }
 
     return json({ error: "unknown action" }, 400);
