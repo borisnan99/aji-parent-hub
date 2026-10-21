@@ -2136,6 +2136,15 @@ function StaffNotices({profile}){
   const fire=m=>{setToast(m);setTimeout(()=>setToast(''),4200)}
   const [pri,setPri]=useState('update');const [subject,setSubject]=useState('');const [bodyTxt,setBodyTxt]=useState('');const [emailNow,setEmailNow]=useState(false)
   const [sent,setSent]=useState(null);const [detail,setDetail]=useState({})
+  const [files,setFiles]=useState([])
+  const humanSize=n=>{n=Number(n)||0;if(n<1024)return n+' B';if(n<1048576)return Math.round(n/1024)+' KB';return (n/1048576).toFixed(1)+' MB'}
+  const attIcon=(t,name)=>{t=(t||'').toLowerCase();const ext=((name||'').split('.').pop()||'').toLowerCase();if(t.startsWith('image/'))return '🖼️';if(t.startsWith('video/'))return '🎬';if(t.startsWith('audio/'))return '🎵';if(t.includes('pdf')||ext==='pdf')return '📕';if(t.includes('word')||['doc','docx'].includes(ext))return '📘';if(t.includes('sheet')||t.includes('excel')||['xls','xlsx','csv'].includes(ext))return '📊';if(['zip','rar','7z'].includes(ext))return '🗜️';return '📎'}
+  const onPick=e=>{const list=[...(e.target.files||[])];setFiles(prev=>[...prev,...list].slice(0,12));e.target.value=''}
+  function attView(a,i){const isImg=(a.type||'').startsWith('image/')&&a.url;return html`<a key=${i} href=${a.url||'#'} target="_blank" rel="noopener" class="card" style=${{display:'flex',alignItems:'center',gap:10,padding:'8px 10px',marginTop:6,textDecoration:'none',color:C.navy}}>
+    ${isImg?html`<img src=${a.url} style=${{width:44,height:44,objectFit:'cover',borderRadius:8,flexShrink:0}}/>`:html`<span style=${{fontSize:22,flexShrink:0}}>${attIcon(a.type,a.name)}</span>`}
+    <span style=${{minWidth:0,flex:1}}><div style=${{fontWeight:600,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>${a.name}</div><div class="muted" style=${{fontSize:11}}>${humanSize(a.size)} · tap to open</div></span>
+    <span class="muted" style=${{fontSize:18,flexShrink:0}}>⬇</span></a>`}
+  async function uploadOne(file){const {data:u,error}=await sb.functions.invoke('staff-notices',{body:{action:'upload_url',filename:file.name}});if(error||!u||u.error||!u.token)throw new Error((u&&u.error)||(error&&error.message)||'upload failed');const {error:ue}=await sb.storage.from(u.bucket).uploadToSignedUrl(u.path,u.token,file,{contentType:file.type||'application/octet-stream'});if(ue)throw new Error(ue.message||'upload failed');return {path:u.path,name:file.name,type:file.type||'',size:file.size||0}}
   async function load(){const {data:r,error}=await sb.functions.invoke('staff-notices',{body:{action:'inbox'}});if(error||(r&&r.error)){setData({messages:[],is_admin:false});return}setData(r)}
   useEffect(()=>{load()},[])
   const isAdmin=data?data.is_admin:false
@@ -2143,17 +2152,35 @@ function StaffNotices({profile}){
   const badge=p=>{const x=PRIO[p]||PRIO.update;return html`<span class="tag" style=${{background:x.bg,color:x.c,padding:'3px 9px'}}>${x.l}</span>`}
   async function openMsg(m){const willOpen=open!==m.id;setOpen(willOpen?m.id:null);if(willOpen&&!m.read){await sb.functions.invoke('staff-notices',{body:{action:'read',message_id:m.id}});load()}}
   async function markAll(){await sb.functions.invoke('staff-notices',{body:{action:'read_all'}});load()}
-  async function send(){if(!bodyTxt.trim()){fire('Write a message');return}
-    if(!window.confirm('Send this '+PRIO[pri].l+' notice to all staff'+(emailNow?', and email it to them now':'')+'?'))return
-    setBusy(true);const {data:r,error}=await sb.functions.invoke('staff-notices',{body:{action:'send',priority:pri,subject,body:bodyTxt,email_now:emailNow}});setBusy(false)
-    if(error||(r&&r.error)){fire((r&&r.error)||'Error sending');return}
-    fire('Sent to '+r.recipients+' staff'+(r.emailed?' · '+r.emailed+' emailed':''));setSubject('');setBodyTxt('');setPri('update');setEmailNow(false);setSent(null);setMode('sent');load()}
+  async function send(){if(!bodyTxt.trim()&&files.length===0){fire('Write a message or add a file');return}
+    if(!window.confirm('Send this '+PRIO[pri].l+' notice'+(files.length?' with '+files.length+' attachment'+(files.length>1?'s':''):'')+' to all staff'+(emailNow?', and email it to them now':'')+'?'))return
+    setBusy(true)
+    try{const atts=[];for(const f of files){atts.push(await uploadOne(f))}
+      const {data:r,error}=await sb.functions.invoke('staff-notices',{body:{action:'send',priority:pri,subject,body:bodyTxt,email_now:emailNow,attachments:atts}})
+      if(error||(r&&r.error)){fire((r&&r.error)||'Error sending');setBusy(false);return}
+      fire('Sent to '+r.recipients+' staff'+(r.attachments?' · '+r.attachments+' file'+(r.attachments>1?'s':''):'')+(r.emailed?' · '+r.emailed+' emailed':''));setSubject('');setBodyTxt('');setPri('update');setEmailNow(false);setFiles([]);setSent(null);setMode('sent');load()}
+    catch(e){fire('Upload error: '+(e&&e.message||e))}
+    setBusy(false)}
   async function loadSent(){setSent(null);const {data:r}=await sb.functions.invoke('staff-notices',{body:{action:'sent'}});setSent((r&&r.messages)||[])}
   useEffect(()=>{if(mode==='sent'&&isAdmin&&sent===null)loadSent()},[mode,isAdmin])
   async function loadDetail(id){const {data:r}=await sb.functions.invoke('staff-notices',{body:{action:'sent_detail',message_id:id}});setDetail(d=>({...d,[id]:(r&&r.people)||[]}))}
   async function emailUnread(m){const n=m.total-m.read;if(n<=0)return;if(!window.confirm('Email the '+n+' staff who haven’t opened this yet?'))return
     setBusy(true);const {data:r,error}=await sb.functions.invoke('staff-notices',{body:{action:'email_unread',message_id:m.id}});setBusy(false)
     if(error||(r&&r.error)){fire((r&&r.error)||'Error');return}fire(r.emailed?('Emailed '+r.emailed):'Everyone has already opened it');loadSent()}
+  function printRecord(){const rows=(sent||[]);if(!rows.length){fire('No notices to print yet');return}
+    const w=window.open('','_blank');if(!w){fire('Allow pop-ups to print');return}
+    const PC={urgent:'#B23A2E',important:'#8A6D1B',update:'#14294D'},PL={urgent:'Urgent',important:'Important',update:'Update'}
+    const fmtF=d=>d?new Date(d).toLocaleString('en-GB',{day:'numeric',month:'long',year:'numeric',hour:'2-digit',minute:'2-digit'}):''
+    const asc=rows.slice().reverse()
+    const items=asc.map(m=>{const pc=PC[m.priority]||PC.update,pl=PL[m.priority]||'Update';const atts=(m.attachments||[]).map(a=>bEsc(a.name)).join(', ');
+      return '<div class="rec"><div class="rh"><span class="pri" style="background:'+pc+'">'+pl.toUpperCase()+'</span><span class="dt">'+bEsc(fmtF(m.created_at))+'</span></div>'+
+        (m.subject?'<div class="subj">'+bEsc(m.subject)+'</div>':'')+
+        (m.body?'<div class="bod">'+bEsc(m.body).replace(/\n/g,'<br>')+'</div>':'')+
+        (atts?'<div class="att">📎 Attachments: '+atts+'</div>':'')+
+        '<div class="meta">Sent by '+bEsc(m.sender_name||'—')+' · to '+(m.total||0)+' staff · '+(m.read||0)+' read</div></div>'}).join('')
+    const css='@page{size:A4;margin:16mm}*{box-sizing:border-box}body{font-family:Arial,Helvetica,sans-serif;color:#1B2438;margin:0}.hd{background:#14294D;color:#fff;border-bottom:6px solid #C4A24C;padding:18px;text-align:center}.hd .org{font-size:12px;letter-spacing:2px;opacity:.85}.hd h1{font-family:Georgia,serif;font-size:24px;margin:6px 0 2px}.hd .sub{font-size:11px;opacity:.8}.wrap{padding:6px 2px}.rec{border:1px solid #E3E6EC;border-radius:8px;padding:12px 14px;margin:12px 0;page-break-inside:avoid}.rh{display:flex;justify-content:space-between;align-items:center;gap:8px}.pri{color:#fff;font-size:10px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:999px}.dt{font-size:11px;color:#55606F;font-weight:700}.subj{font-weight:700;color:#14294D;margin-top:8px;font-size:15px}.bod{font-size:13px;line-height:1.55;margin-top:5px}.att{font-size:12px;color:#3A4660;margin-top:8px;background:#F7F5EF;border-radius:6px;padding:6px 8px}.meta{font-size:11px;color:#9A948A;margin-top:8px;border-top:1px solid #EEE;padding-top:6px}.foot{margin-top:14px;color:#9A948A;font-size:9px;text-align:center}'
+    w.document.write('<!doctype html><html><head><meta charset="utf-8"><title>Staff Notices — Record</title><style>'+css+'</style></head><body><div class="hd"><div class="org">AL JAMIATUL ISLAMIYAH</div><h1>Staff Notices — Record</h1><div class="sub">Bolton Darul Uloom · Messages sent to all staff</div></div><div class="wrap">'+items+'<div class="foot">'+asc.length+' notice'+(asc.length>1?'s':'')+' · Printed from Parent Hub '+new Date().toLocaleDateString('en-GB')+'</div></div></body></html>')
+    w.document.close();w.focus();setTimeout(()=>{try{w.print()}catch(e){}},400)}
   return html`<div>
     <h2 class="serif" style=${{color:C.navy,marginTop:4}}>Staff notices</h2>
     ${isAdmin&&html`<div style=${{display:'flex',gap:6,marginBottom:12,flexWrap:'wrap'}}>
@@ -2171,9 +2198,9 @@ function StaffNotices({profile}){
         <div onClick=${()=>openMsg(m)} style=${{padding:'10px 12px',cursor:'pointer'}}>
           <div style=${{display:'flex',gap:8,alignItems:'center'}}>${badge(m.priority)}${!m.read?html`<span class="tag" style=${{background:C.navy,color:'#fff'}}>New</span>`:''}</div>
           <div style=${{fontWeight:m.read?500:700,marginTop:5,color:C.navy}}>${m.subject||(m.body.length>64?m.body.slice(0,64)+'…':m.body)}</div>
-          <div class="muted" style=${{fontSize:11,marginTop:2}}>${m.sender_name} · ${fmt(m.created_at)}</div>
+          <div class="muted" style=${{fontSize:11,marginTop:2}}>${m.sender_name} · ${fmt(m.created_at)}${m.attachments&&m.attachments.length?' · 📎 '+m.attachments.length:''}</div>
         </div>
-        ${isOpen&&html`<div style=${{padding:'0 12px 12px'}}>${m.subject?html`<div style=${{fontWeight:700,marginBottom:4}}>${m.subject}</div>`:''}<div style=${{whiteSpace:'pre-wrap',fontSize:14,lineHeight:1.55}}>${m.body}</div></div>`}
+        ${isOpen&&html`<div style=${{padding:'0 12px 12px'}}>${m.subject?html`<div style=${{fontWeight:700,marginBottom:4}}>${m.subject}</div>`:''}${m.body?html`<div style=${{whiteSpace:'pre-wrap',fontSize:14,lineHeight:1.55}}>${m.body}</div>`:''}${(m.attachments||[]).length?html`<div style=${{marginTop:10}}>${m.attachments.map((a,i)=>attView(a,i))}</div>`:''}</div>`}
       </div>`})}
     </div>`}
 
@@ -2184,12 +2211,16 @@ function StaffNotices({profile}){
       <input class="in" placeholder="e.g. Staff meeting moved to 4pm" value=${subject} onInput=${e=>setSubject(e.target.value)}/>
       <div class="lbl" style=${{marginTop:12}}>Message</div>
       <textarea class="in" style=${{minHeight:130,resize:'vertical',fontFamily:'inherit'}} placeholder="Type the update for all staff…" value=${bodyTxt} onInput=${e=>setBodyTxt(e.target.value)}></textarea>
+      <div class="lbl" style=${{marginTop:12}}>Attachments <span class="muted" style=${{fontWeight:400}}>(optional — PDF, images, video, any file)</span></div>
+      <label class="btn ghost" style=${{marginTop:6,width:'auto',display:'inline-block',cursor:'pointer'}}>＋ Add files<input type="file" multiple style=${{display:'none'}} onChange=${onPick}/></label>
+      ${files.length>0&&html`<div style=${{marginTop:8,display:'flex',flexDirection:'column',gap:6}}>${files.map((f,i)=>html`<div key=${i} class="card" style=${{padding:'7px 10px',display:'flex',justifyContent:'space-between',alignItems:'center',gap:8}}><span style=${{minWidth:0,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',fontSize:13}}>${attIcon(f.type,f.name)} ${f.name} <span class="muted">(${humanSize(f.size)})</span></span><button class="chip" disabled=${busy} onClick=${()=>setFiles(files.filter((_,j)=>j!==i))}>Remove</button></div>`)}<div class="muted" style=${{fontSize:11}}>${files.length} file${files.length>1?'s':''} · up to 12, 100 MB each</div></div>`}
       <label style=${{display:'flex',gap:8,alignItems:'center',marginTop:12,fontSize:13,cursor:'pointer'}}><input type="checkbox" checked=${emailNow} onChange=${e=>setEmailNow(e.target.checked)}/><span>Also email all staff now</span></label>
       <div class="muted" style=${{fontSize:11,marginTop:6,lineHeight:1.5}}>Everyone gets a notification in the app. If you don't email now, you can email just the staff who haven't opened it later, from <b>Sent</b>.</div>
-      <button class="btn" style=${{marginTop:12}} disabled=${busy} onClick=${send}>${busy?'Sending…':'Send to all staff'}</button>
+      <button class="btn" style=${{marginTop:12}} disabled=${busy} onClick=${send}>${busy?(files.length?'Uploading & sending…':'Sending…'):'Send to all staff'}</button>
     </div>`}
 
     ${mode==='sent'&&isAdmin&&html`<div>
+      ${sent&&sent.length>0&&html`<div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10,gap:8,flexWrap:'wrap'}}><p class="muted" style=${{fontSize:12,margin:0,maxWidth:380}}>Every notice sent to staff, with the date and how many have read it — kept as your record.</p><button class="chip" onClick=${printRecord}>📄 Printable record</button></div>`}
       ${sent===null&&html`<div class="muted">Loading…</div>`}
       ${sent&&sent.length===0&&html`<div class="card muted" style=${{padding:16}}>No notices sent yet.</div>`}
       ${(sent||[]).map(m=>{const x=PRIO[m.priority]||PRIO.update;const unread=m.total-m.read;const det=detail[m.id];return html`<div key=${m.id} class="card" style=${{padding:'10px 12px',marginBottom:8,borderLeft:'4px solid '+x.c}}>
@@ -2197,6 +2228,7 @@ function StaffNotices({profile}){
           <div style=${{minWidth:0}}>${badge(m.priority)}<div style=${{fontWeight:700,color:C.navy,marginTop:4}}>${m.subject||m.body.slice(0,50)}</div><div class="muted" style=${{fontSize:11,marginTop:2}}>${m.sender_name} · ${fmt(m.created_at)}</div></div>
           <div style=${{textAlign:'right',flexShrink:0}}><div style=${{fontWeight:700,color:C.navy,fontSize:16}}>${m.read}/${m.total}</div><div class="muted" style=${{fontSize:11}}>read</div></div>
         </div>
+        ${(m.attachments||[]).length?html`<div style=${{marginTop:8}}>${m.attachments.map((a,i)=>attView(a,i))}</div>`:''}
         <div style=${{display:'flex',gap:8,marginTop:8,flexWrap:'wrap'}}>
           <button class="chip" onClick=${()=>det?setDetail(d=>({...d,[m.id]:undefined})):loadDetail(m.id)}>${det?'Hide list':'Who’s read it'}</button>
           ${unread>0?html`<button class="chip" style=${{color:C.navy}} disabled=${busy} onClick=${()=>emailUnread(m)}>✉️ Email the ${unread} who haven’t opened it</button>`:html`<span class="tag" style=${{background:'#E5EEE7',color:C.green,padding:'4px 10px'}}>Everyone opened it</span>`}
