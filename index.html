@@ -1506,8 +1506,8 @@ function Dashboard({profile,onSignOut}){
         <div style=${{color:'#AEBAD0',fontSize:10}}>Al Jamiatul Islamiyah</div></div></div>
       <button onClick=${onSignOut} style=${{background:'transparent',border:'1px solid rgba(255,255,255,.3)',color:'#fff',borderRadius:10,padding:'6px 10px',fontSize:12,cursor:'pointer'}}>Sign out</button></div>
     <div style=${{height:3,background:`linear-gradient(90deg,${C.gold},${C.goldSoft})`}}></div>
-    <div style=${{padding:'8px 16px 0',display:'flex',gap:8,flexWrap:'wrap'}}>${['overview','pupils','attendance','league',...(canManage?['engagement']:[]),'praise','detentions','behaviour','safeguarding',...(canMedFire?['medical','firedrills']:[]),...(canIncident?['incidents']:[]),...(canBoarding?['boarding']:[]),...(canSup?['supervisor']:[]),...(canKit?['kitchen']:[]),...(canManage?['marks','dataprotection','users']:[]),'announce','inbox'].map(t=>html`
-      <button key=${t} onClick=${()=>setTab(t)} class="chip ${tab===t?'on':''}">${t==='overview'?'Overview':t==='pupils'?'Pupils':t==='attendance'?'Attendance':t==='league'?'League':t==='engagement'?'Engagement':t==='praise'?'Praise':t==='detentions'?'Detentions':t==='behaviour'?'Behaviour':t==='safeguarding'?'Safeguarding':t==='medical'?'Medical':t==='firedrills'?'Fire drills':t==='incidents'?'Injuries':t==='boarding'?'Boarding':t==='supervisor'?'Supervisor':t==='kitchen'?'Kitchen':t==='marks'?'Exam marks':t==='dataprotection'?'Data protection':t==='users'?'Users':t==='announce'?'Announce':'Inbox'}</button>`)}</div>
+    <div style=${{padding:'8px 16px 0',display:'flex',gap:8,flexWrap:'wrap'}}>${['overview','pupils','attendance','league',...(canManage?['engagement']:[]),'praise','detentions','behaviour','safeguarding',...(canMedFire?['medical','firedrills']:[]),...(canIncident?['incidents']:[]),...(canBoarding?['boarding']:[]),...(canSup?['supervisor']:[]),...(canKit?['kitchen']:[]),...(canManage?['contacts','marks','dataprotection','users']:[]),'announce','inbox'].map(t=>html`
+      <button key=${t} onClick=${()=>setTab(t)} class="chip ${tab===t?'on':''}">${t==='overview'?'Overview':t==='pupils'?'Pupils':t==='attendance'?'Attendance':t==='league'?'League':t==='engagement'?'Engagement':t==='praise'?'Praise':t==='detentions'?'Detentions':t==='behaviour'?'Behaviour':t==='safeguarding'?'Safeguarding':t==='medical'?'Medical':t==='firedrills'?'Fire drills':t==='incidents'?'Injuries':t==='boarding'?'Boarding':t==='supervisor'?'Supervisor':t==='kitchen'?'Kitchen':t==='contacts'?'Contacts':t==='marks'?'Exam marks':t==='dataprotection'?'Data protection':t==='users'?'Users':t==='announce'?'Announce':'Inbox'}</button>`)}</div>
     <div style=${{padding:16}}>
       ${pupils===null&&html`<div class="muted">Loading live data…</div>`}
       ${tab==='overview'&&pupils&&html`<div>
@@ -1552,6 +1552,7 @@ function Dashboard({profile,onSignOut}){
       ${tab==='dataprotection'&&canManage&&html`<${DataProtection} profile=${profile}/>`}
       ${tab==='users'&&canManage&&html`<${Users} profile=${profile}/>`}
       ${tab==='marks'&&canManage&&html`<${WeeklyMarks} profile=${profile}/>`}
+      ${tab==='contacts'&&canManage&&html`<${Contacts} profile=${profile}/>`}
       ${editPupil&&html`<${PupilEditor} pupil=${editPupil} classes=${classes} onClose=${()=>setEditPupil(null)} onSaved=${m=>{setEditPupil(null);fire(m);load()}}/>`}
     </div>
     <${PrivacyFooter} staff=${true}/>
@@ -2063,6 +2064,34 @@ function WeeklyMarks({profile}){
       <div class="muted" style=${{fontSize:12,marginTop:4}}>Class average ${sentInfo.class_average} / 10 · ${sentInfo.matched} pupils${sentInfo.unmatched&&sentInfo.unmatched.length?' · '+sentInfo.unmatched.length+' unmatched (not sent): '+sentInfo.unmatched.join(', '):''}</div>
     </div>`}
     ${toast&&html`<div style=${{position:'fixed',left:'50%',bottom:24,transform:'translateX(-50%)',background:'#0E1D38',color:'#fff',padding:'10px 16px',borderRadius:999,fontSize:14,maxWidth:'90%',textAlign:'center'}}>${toast}</div>`}
+  </div>`}
+
+function Contacts({profile}){
+  const [data,setData]=useState(null);const [q,setQ]=useState('')
+  async function load(){const {data,error}=await sb.functions.invoke('user-admin',{body:{action:'contacts'}});if(error||(data&&data.error)){setData({pupils:[]});return}setData(data)}
+  useEffect(()=>{load()},[])
+  const pupils=data?(data.pupils||[]):[]
+  const ql=q.trim().toLowerCase();const qd=ql.replace(/[^\d+]/g,'')
+  const match=p=>!ql||p.name.toLowerCase().includes(ql)||(p.contacts||[]).some(c=>(c.name||'').toLowerCase().includes(ql)||(c.parent_name||'').toLowerCase().includes(ql)||(qd&&(c.mobile||'').replace(/[^\d+]/g,'').includes(qd)))
+  const filtered=pupils.filter(match)
+  const withNum=pupils.filter(p=>(p.contacts||[]).length).length
+  const sani=m=>'tel:'+(m||'').replace(/[^\d+]/g,'')
+  return html`<div>
+    <h2 class="serif" style=${{color:C.navy,marginTop:4}}>Parent contacts</h2>
+    <p class="muted" style=${{fontSize:12,marginTop:0,lineHeight:1.5}}>Tap a number to call it straight from your phone — no copying needed. Numbers come from each pupil's guardian records.</p>
+    <input class="in" style=${{marginTop:0}} placeholder="Search pupil, parent or number…" value=${q} onInput=${e=>setQ(e.target.value)}/>
+    ${data&&html`<div class="muted" style=${{fontSize:12,margin:'8px 2px'}}>${pupils.length} pupils · ${withNum} with a number on file${ql?` · ${filtered.length} match`:''}</div>`}
+    ${data===null&&html`<div class="muted">Loading…</div>`}
+    ${filtered.map(p=>html`<div key=${p.pupil_id} class="card" style=${{padding:'10px 12px',marginBottom:8}}>
+      <div style=${{display:'flex',justifyContent:'space-between',alignItems:'baseline',gap:8}}><b>${p.name}</b>${p.year?html`<span class="muted" style=${{fontSize:11}}>${p.year}</span>`:''}</div>
+      ${(p.contacts||[]).length===0
+        ? html`<div class="muted" style=${{fontSize:12,marginTop:4}}>No number on file.</div>`
+        : (p.contacts||[]).map((c,i)=>html`<a key=${i} href=${sani(c.mobile)} style=${{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,padding:'10px 12px',marginTop:6,border:'1px solid '+C.line,borderRadius:12,textDecoration:'none',color:C.ink}}>
+          <span style=${{minWidth:0}}><b style=${{color:C.navy,fontSize:15,letterSpacing:'.2px'}}>${c.mobile}</b><div class="muted" style=${{fontSize:11,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>${[c.label,c.name||c.parent_name].filter(Boolean).join(' · ')}${c.primary?' · preferred':''}</div></span>
+          <span style=${{flexShrink:0,background:C.green,color:'#fff',borderRadius:999,padding:'7px 14px',fontSize:13,fontWeight:700}}>📞 Call</span>
+        </a>`)}
+    </div>`)}
+    ${data&&filtered.length===0&&html`<div class="card muted" style=${{padding:16}}>No match.</div>`}
   </div>`}
 
 function App(){
