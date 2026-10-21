@@ -123,6 +123,45 @@ Deno.serve(async (req) => {
       return json({ ok: true });
     }
 
+    if (action === "pupil_card") {
+      // one pupil's guardians, each with their email and their phone numbers — for the pupil editor
+      const pid = body.pupil_id;
+      if (!pid) return json({ error: "pupil_id required" }, 400);
+      const { data: links } = await svc.from("parent_pupil").select("parent_id,is_primary").eq("pupil_id", pid);
+      const parentIds = [...new Set((links ?? []).map((l: any) => l.parent_id))];
+      const { data: profs } = parentIds.length ? await svc.from("profiles").select("id,full_name,email").in("id", parentIds) : { data: [] };
+      const pmap: Record<string, any> = {}; (profs ?? []).forEach((p: any) => (pmap[p.id] = p));
+      const { data: gc } = parentIds.length ? await svc.from("guardian_contacts").select("id,parent_id,label,name,mobile").in("parent_id", parentIds) : { data: [] };
+      const byParent: Record<string, any[]> = {};
+      (gc ?? []).forEach((g: any) => { (byParent[g.parent_id] = byParent[g.parent_id] || []).push({ id: g.id, label: g.label || "", name: g.name || "", mobile: g.mobile || "" }); });
+      const guardians = (links ?? []).filter((l: any) => pmap[l.parent_id]).map((l: any) => ({
+        parent_id: l.parent_id, full_name: pmap[l.parent_id].full_name || "", email: pmap[l.parent_id].email || "",
+        is_primary: !!l.is_primary, numbers: byParent[l.parent_id] || [],
+      })).sort((a: any, b: any) => (b.is_primary ? 1 : 0) - (a.is_primary ? 1 : 0));
+      return json({ ok: true, guardians });
+    }
+
+    if (action === "set_preferred") {
+      // mark one linked parent as the preferred (primary) contact for this pupil
+      const pid = body.pupil_id, parent = body.parent_id;
+      if (!pid || !parent) return json({ error: "pupil_id and parent_id required" }, 400);
+      await svc.from("parent_pupil").update({ is_primary: false }).eq("pupil_id", pid);
+      const { error } = await svc.from("parent_pupil").update({ is_primary: true }).eq("pupil_id", pid).eq("parent_id", parent);
+      if (error) return json({ error: error.message }, 500);
+      return json({ ok: true });
+    }
+
+    if (action === "parent_email") {
+      // change a parent's email — used for exam marks & announcements. Keep the login in sync if they have one.
+      const parent = body.parent_id; const email = (body.email || "").trim();
+      if (!parent) return json({ error: "parent_id required" }, 400);
+      if (!email || !email.includes("@")) return json({ error: "enter a valid email address" }, 400);
+      const { error } = await svc.from("profiles").update({ email }).eq("id", parent);
+      if (error) return json({ error: error.message }, 500);
+      try { await svc.auth.admin.updateUserById(parent, { email, email_confirm: true }); } catch { /* parent may have no login; profiles.email is what we email */ }
+      return json({ ok: true, email });
+    }
+
     return json({ error: "unknown action" }, 400);
   } catch (e: any) { return json({ error: String(e?.message ?? e) }, 500); }
 });

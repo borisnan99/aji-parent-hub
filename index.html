@@ -178,7 +178,26 @@ function PupilEditor({pupil,classes,onClose,onSaved}){
   const [bs,setBs]=useState(pupil.boarding_status||'Boarding');const [active,setActive]=useState(pupil.is_active!==false)
   const [busy,setBusy]=useState(false);const [err,setErr]=useState('')
   const [guardians,setGuardians]=useState(null);const [pEmail,setPEmail]=useState('');const [pName,setPName]=useState('');const [pBusy,setPBusy]=useState(false);const [pMsg,setPMsg]=useState('')
-  async function loadGuardians(){if(isNew||!pupil.id)return;const {data}=await sb.from('parent_pupil').select('is_primary,profiles(id,full_name,email)').eq('pupil_id',pupil.id);setGuardians((data||[]).map(r=>({...(r.profiles||{}),is_primary:r.is_primary})).filter(g=>g.id).sort((a,b)=>(b.is_primary?1:0)-(a.is_primary?1:0)))}
+  const [emailDraft,setEmailDraft]=useState({});const [gBusy,setGBusy]=useState('');const [numEdit,setNumEdit]=useState(null);const [numDraft,setNumDraft]=useState({})
+  async function loadGuardians(){if(isNew||!pupil.id)return;const {data}=await sb.functions.invoke('user-admin',{body:{action:'pupil_card',pupil_id:pupil.id}});const gs=(data&&data.guardians)||[];setGuardians(gs);const ed={};gs.forEach(g=>{ed[g.parent_id]=g.email||''});setEmailDraft(ed)}
+  async function setPreferred(pid){setGBusy('pref-'+pid);const {data,error}=await sb.functions.invoke('user-admin',{body:{action:'set_preferred',pupil_id:pupil.id,parent_id:pid}});setGBusy('');if(error||(data&&data.error)){setPMsg((data&&data.error)||'Error');return}setPMsg('Preferred contact updated ✓');loadGuardians()}
+  async function saveEmail(pid){const em=(emailDraft[pid]||'').trim();if(!em||!em.includes('@')){setPMsg('Enter a valid email');return}setGBusy('em-'+pid);const {data,error}=await sb.functions.invoke('user-admin',{body:{action:'parent_email',parent_id:pid,email:em}});setGBusy('');if(error||(data&&data.error)){setPMsg((data&&data.error)||'Error');return}setPMsg('Email updated ✓');loadGuardians()}
+  function startNum(c){setNumEdit('c-'+c.id);setNumDraft({id:c.id,parent_id:null,label:c.label||'',name:c.name||'',mobile:c.mobile||''})}
+  function startAddNum(pid){setNumEdit('new-'+pid);setNumDraft({id:null,parent_id:pid,label:'',name:'',mobile:''})}
+  function cancelNum(){setNumEdit(null);setNumDraft({})}
+  async function saveNum(){if(!(numDraft.mobile||'').trim()){setPMsg('Enter a number');return}setGBusy('num');const {data,error}=await sb.functions.invoke('user-admin',{body:{action:'contact_save',id:numDraft.id||undefined,parent_id:numDraft.parent_id,label:numDraft.label,name:numDraft.name,mobile:numDraft.mobile}});setGBusy('');if(error||(data&&data.error)){setPMsg((data&&data.error)||'Error saving');return}setPMsg('Number saved ✓');cancelNum();loadGuardians()}
+  async function delNum(){if(!numDraft.id)return;if(!window.confirm('Remove this number?'))return;setGBusy('num');const {data,error}=await sb.functions.invoke('user-admin',{body:{action:'contact_delete',id:numDraft.id}});setGBusy('');if(error||(data&&data.error)){setPMsg((data&&data.error)||'Error');return}setPMsg('Number removed');cancelNum();loadGuardians()}
+  const numForm=()=>html`<div class="card" style=${{padding:10,marginTop:6,background:'#FAF8F3',border:'1px solid '+C.gold}}>
+    <div style=${{display:'flex',gap:6,flexWrap:'wrap'}}>
+      <select class="in" style=${{flex:'1 1 110px',marginTop:0}} value=${numDraft.label} onChange=${e=>setNumDraft(d=>({...d,label:e.target.value}))}><option value="">Label…</option>${['Father','Mother','Guardian','Other'].map(l=>html`<option key=${l} value=${l}>${l}</option>`)}</select>
+      <input class="in" style=${{flex:'2 1 150px',marginTop:0}} placeholder="Name (optional)" value=${numDraft.name} onInput=${e=>setNumDraft(d=>({...d,name:e.target.value}))}/>
+    </div>
+    <input class="in" type="tel" style=${{marginTop:6}} placeholder="Mobile number" value=${numDraft.mobile} onInput=${e=>setNumDraft(d=>({...d,mobile:e.target.value}))}/>
+    <div style=${{display:'flex',gap:8,marginTop:8}}>
+      <button class="btn" style=${{flex:1}} disabled=${gBusy==='num'} onClick=${saveNum}>${gBusy==='num'?'Saving…':'Save number'}</button>
+      ${numDraft.id?html`<button class="chip" style=${{color:C.urgent}} disabled=${gBusy==='num'} onClick=${delNum}>Remove</button>`:''}
+      <button class="chip" onClick=${cancelNum}>Cancel</button>
+    </div></div>`
   useEffect(()=>{loadGuardians()},[])
   async function addParent(){const em=pEmail.trim();if(!em||!em.includes('@')){setPMsg('Enter a valid email');return}setPBusy(true);setPMsg('')
     const {data,error}=await sb.functions.invoke('add-parent',{body:{pupil_id:pupil.id,email:em,name:pName.trim()||null}});setPBusy(false)
@@ -215,10 +234,30 @@ function PupilEditor({pupil,classes,onClose,onSaved}){
         <div><b>On roll</b><div class="muted" style=${{fontSize:11}}>Turn off if the pupil has left</div></div>
         <button class="chip ${active?'on':''}" onClick=${()=>setActive(a=>!a)}>${active?'On roll':'Left'}</button></div>`}
       ${!isNew&&html`<div style=${{marginTop:16,borderTop:'1px solid '+C.line,paddingTop:14}}>
-        <div class="lbl" style=${{marginBottom:6}}>Parents / Guardians</div>
-        ${guardians===null?html`<div class="muted" style=${{fontSize:12}}>Loading…</div>`:guardians.length===0?html`<div class="muted" style=${{fontSize:12}}>No parents linked yet.</div>`:guardians.map(g=>html`<div key=${g.id} class="card" style=${{padding:'8px 10px',marginBottom:6,display:'flex',justifyContent:'space-between',alignItems:'center',gap:8}}>
-          <div style=${{minWidth:0}}><b style=${{fontSize:13}}>${g.full_name||'Parent'}</b><div class="muted" style=${{fontSize:11,wordBreak:'break-all'}}>${g.email}</div></div>
-          ${g.is_primary?html`<span class="tag" style=${{background:C.goldSoft,color:C.navy,flexShrink:0}}>Preferred</span>`:''}</div>`)}
+        <div class="lbl" style=${{marginBottom:2}}>Parents / Guardians & contacts</div>
+        <div class="muted" style=${{fontSize:11,marginBottom:8,lineHeight:1.5}}>Set who the preferred contact is, correct the email we send exam marks & announcements to, and tap a number to call it.</div>
+        ${guardians===null?html`<div class="muted" style=${{fontSize:12}}>Loading…</div>`:guardians.length===0?html`<div class="muted" style=${{fontSize:12}}>No parents linked yet — add one below.</div>`:''}
+        ${(guardians||[]).map(g=>html`<div key=${g.parent_id} class="card" style=${{padding:'10px 12px',marginBottom:8,border:'1px solid '+(g.is_primary?C.gold:C.line)}}>
+          <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8}}>
+            <b style=${{fontSize:14,minWidth:0}}>${g.full_name||'Parent'}</b>
+            ${g.is_primary?html`<span class="tag" style=${{background:C.goldSoft,color:C.navy,flexShrink:0}}>Preferred contact</span>`:html`<button class="chip" style=${{flexShrink:0}} disabled=${gBusy==='pref-'+g.parent_id} onClick=${()=>setPreferred(g.parent_id)}>${gBusy==='pref-'+g.parent_id?'…':'Set as preferred'}</button>`}
+          </div>
+          <div class="lbl" style=${{marginTop:10,fontWeight:600}}>Email</div>
+          <div style=${{display:'flex',gap:6,marginTop:4}}>
+            <input class="in" type="email" style=${{marginTop:0,flex:1,minWidth:0}} value=${emailDraft[g.parent_id]||''} onInput=${e=>setEmailDraft(d=>({...d,[g.parent_id]:e.target.value}))}/>
+            <button class="chip" style=${{flexShrink:0}} disabled=${gBusy==='em-'+g.parent_id||(emailDraft[g.parent_id]||'')===(g.email||'')} onClick=${()=>saveEmail(g.parent_id)}>${gBusy==='em-'+g.parent_id?'…':'Save'}</button>
+          </div>
+          <div class="lbl" style=${{marginTop:12,fontWeight:600}}>Phone numbers</div>
+          ${(g.numbers||[]).length===0&&numEdit!=='new-'+g.parent_id?html`<div class="muted" style=${{fontSize:12,marginTop:4}}>No number on file.</div>`:''}
+          ${(g.numbers||[]).map(c=> numEdit==='c-'+c.id ? html`<div key=${c.id}>${numForm()}</div>` : html`<div key=${c.id} style=${{display:'flex',gap:6,alignItems:'center',marginTop:6}}>
+              <a href=${'tel:'+(c.mobile||'').replace(/[^\d+]/g,'')} style=${{flex:1,minWidth:0,display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,padding:'9px 11px',border:'1px solid '+C.line,borderRadius:12,textDecoration:'none',color:C.ink}}>
+                <span style=${{minWidth:0}}><b style=${{color:C.navy,fontSize:15}}>${c.mobile}</b><div class="muted" style=${{fontSize:11,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>${[c.label,c.name].filter(Boolean).join(' · ')||'Mobile'}</div></span>
+                <span style=${{flexShrink:0,background:C.green,color:'#fff',borderRadius:999,padding:'6px 12px',fontSize:13,fontWeight:700}}>📞 Call</span>
+              </a>
+              <button class="chip" style=${{flexShrink:0}} onClick=${()=>startNum(c)}>✏️</button>
+            </div>`)}
+          ${numEdit==='new-'+g.parent_id?numForm():html`<button class="chip" style=${{marginTop:8}} onClick=${()=>startAddNum(g.parent_id)}>＋ Add number</button>`}
+        </div>`)}
         <div class="lbl" style=${{marginTop:10}}>Add another parent (e.g. the mother)</div>
         <input class="in" type="email" placeholder="Parent's email" value=${pEmail} onInput=${e=>setPEmail(e.target.value)}/>
         <input class="in" placeholder="Parent's name (optional)" value=${pName} onInput=${e=>setPName(e.target.value)} style=${{marginTop:6}}/>
@@ -1506,8 +1545,8 @@ function Dashboard({profile,onSignOut}){
         <div style=${{color:'#AEBAD0',fontSize:10}}>Al Jamiatul Islamiyah</div></div></div>
       <button onClick=${onSignOut} style=${{background:'transparent',border:'1px solid rgba(255,255,255,.3)',color:'#fff',borderRadius:10,padding:'6px 10px',fontSize:12,cursor:'pointer'}}>Sign out</button></div>
     <div style=${{height:3,background:`linear-gradient(90deg,${C.gold},${C.goldSoft})`}}></div>
-    <div style=${{padding:'8px 16px 0',display:'flex',gap:8,flexWrap:'wrap'}}>${['overview','notices','pupils','attendance','league',...(canManage?['engagement']:[]),'praise','detentions','behaviour','safeguarding',...(canMedFire?['medical','firedrills']:[]),...(canIncident?['incidents']:[]),...(canBoarding?['boarding']:[]),...(canSup?['supervisor']:[]),...(canKit?['kitchen']:[]),...(canManage?['contacts','marks','dataprotection','users']:[]),'announce','inbox'].map(t=>html`
-      <button key=${t} onClick=${()=>setTab(t)} class="chip ${tab===t?'on':''}">${t==='overview'?'Overview':t==='notices'?'Notices':t==='pupils'?'Pupils':t==='attendance'?'Attendance':t==='league'?'League':t==='engagement'?'Engagement':t==='praise'?'Praise':t==='detentions'?'Detentions':t==='behaviour'?'Behaviour':t==='safeguarding'?'Safeguarding':t==='medical'?'Medical':t==='firedrills'?'Fire drills':t==='incidents'?'Injuries':t==='boarding'?'Boarding':t==='supervisor'?'Supervisor':t==='kitchen'?'Kitchen':t==='contacts'?'Contacts':t==='marks'?'Exam marks':t==='dataprotection'?'Data protection':t==='users'?'Users':t==='announce'?'Announce':'Inbox'}</button>`)}</div>
+    <div style=${{padding:'8px 16px 0',display:'flex',gap:8,flexWrap:'wrap'}}>${['overview','notices','pupils','attendance','league',...(canManage?['engagement']:[]),'praise','detentions','behaviour','safeguarding',...(canMedFire?['medical','firedrills']:[]),...(canIncident?['incidents']:[]),...(canBoarding?['boarding']:[]),...(canSup?['supervisor']:[]),...(canKit?['kitchen']:[]),...(canManage?['marks','dataprotection','users']:[]),'announce','inbox'].map(t=>html`
+      <button key=${t} onClick=${()=>setTab(t)} class="chip ${tab===t?'on':''}">${t==='overview'?'Overview':t==='notices'?'Notices':t==='pupils'?'Pupils':t==='attendance'?'Attendance':t==='league'?'League':t==='engagement'?'Engagement':t==='praise'?'Praise':t==='detentions'?'Detentions':t==='behaviour'?'Behaviour':t==='safeguarding'?'Safeguarding':t==='medical'?'Medical':t==='firedrills'?'Fire drills':t==='incidents'?'Injuries':t==='boarding'?'Boarding':t==='supervisor'?'Supervisor':t==='kitchen'?'Kitchen':t==='marks'?'Exam marks':t==='dataprotection'?'Data protection':t==='users'?'Users':t==='announce'?'Announce':'Inbox'}</button>`)}</div>
     <div style=${{padding:16}}>
       ${pupils===null&&html`<div class="muted">Loading live data…</div>`}
       ${tab==='overview'&&pupils&&html`<div>
@@ -1552,7 +1591,6 @@ function Dashboard({profile,onSignOut}){
       ${tab==='dataprotection'&&canManage&&html`<${DataProtection} profile=${profile}/>`}
       ${tab==='users'&&canManage&&html`<${Users} profile=${profile}/>`}
       ${tab==='marks'&&canManage&&html`<${WeeklyMarks} profile=${profile}/>`}
-      ${tab==='contacts'&&canManage&&html`<${Contacts} profile=${profile}/>`}
       ${tab==='notices'&&html`<${StaffNotices} profile=${profile}/>`}
       ${editPupil&&html`<${PupilEditor} pupil=${editPupil} classes=${classes} onClose=${()=>setEditPupil(null)} onSaved=${m=>{setEditPupil(null);fire(m);load()}}/>`}
     </div>
@@ -2064,68 +2102,6 @@ function WeeklyMarks({profile}){
       <b style=${{color:C.green}}>✓ Sent ${sentInfo.sent} email${sentInfo.sent===1?'':'s'} to parents.</b>
       <div class="muted" style=${{fontSize:12,marginTop:4}}>Class average ${sentInfo.class_average} / 10 · ${sentInfo.matched} pupils${sentInfo.unmatched&&sentInfo.unmatched.length?' · '+sentInfo.unmatched.length+' unmatched (not sent): '+sentInfo.unmatched.join(', '):''}</div>
     </div>`}
-    ${toast&&html`<div style=${{position:'fixed',left:'50%',bottom:24,transform:'translateX(-50%)',background:'#0E1D38',color:'#fff',padding:'10px 16px',borderRadius:999,fontSize:14,maxWidth:'90%',textAlign:'center'}}>${toast}</div>`}
-  </div>`}
-
-function Contacts({profile}){
-  const [data,setData]=useState(null);const [q,setQ]=useState('')
-  const [edit,setEdit]=useState(null);const [draft,setDraft]=useState({});const [busy,setBusy]=useState(false);const [toast,setToast]=useState('')
-  const fire=m=>{setToast(m);setTimeout(()=>setToast(''),3600)}
-  async function load(){const {data,error}=await sb.functions.invoke('user-admin',{body:{action:'contacts'}});if(error||(data&&data.error)){setData({pupils:[]});return}setData(data)}
-  useEffect(()=>{load()},[])
-  const pupils=data?(data.pupils||[]):[]
-  const ql=q.trim().toLowerCase();const qd=ql.replace(/[^\d+]/g,'')
-  const match=p=>!ql||p.name.toLowerCase().includes(ql)||(p.contacts||[]).some(c=>(c.name||'').toLowerCase().includes(ql)||(c.parent_name||'').toLowerCase().includes(ql)||(qd&&(c.mobile||'').replace(/[^\d+]/g,'').includes(qd)))
-  const filtered=pupils.filter(match)
-  const withNum=pupils.filter(p=>(p.contacts||[]).length).length
-  const sani=m=>'tel:'+(m||'').replace(/[^\d+]/g,'')
-  function startEdit(c){setEdit('c-'+c.id);setDraft({id:c.id,label:c.label||'',name:c.name||'',mobile:c.mobile||''})}
-  function startAdd(p){const par=(p.parents||[])[0];setEdit('new-'+p.pupil_id);setDraft({id:null,parent_id:par?par.id:'',label:'',name:'',mobile:'',parents:p.parents||[]})}
-  function cancel(){setEdit(null);setDraft({})}
-  async function save(){if(!(draft.mobile||'').trim()){fire('Enter a number');return}
-    if(!draft.id&&!draft.parent_id){fire('No parent linked to attach this to');return}
-    setBusy(true);const {data:r,error}=await sb.functions.invoke('user-admin',{body:{action:'contact_save',id:draft.id||undefined,parent_id:draft.parent_id,label:draft.label,name:draft.name,mobile:draft.mobile}})
-    setBusy(false);if(error||(r&&r.error)){fire((r&&r.error)||'Error saving');return}fire('Saved');cancel();load()}
-  async function del(){if(!draft.id)return;if(!window.confirm('Remove this number?'))return
-    setBusy(true);const {data:r,error}=await sb.functions.invoke('user-admin',{body:{action:'contact_delete',id:draft.id}});setBusy(false)
-    if(error||(r&&r.error)){fire((r&&r.error)||'Error');return}fire('Removed');cancel();load()}
-  const form=()=>html`<div class="card" style=${{padding:10,marginTop:6,background:'#FAF8F3',border:'1px solid '+C.gold}}>
-    <div style=${{display:'flex',gap:6,flexWrap:'wrap'}}>
-      <input class="in" style=${{flex:'1 1 110px',marginTop:0}} placeholder="Label (e.g. Father)" value=${draft.label} onInput=${e=>setDraft(d=>({...d,label:e.target.value}))}/>
-      <input class="in" style=${{flex:'2 1 150px',marginTop:0}} placeholder="Name (optional)" value=${draft.name} onInput=${e=>setDraft(d=>({...d,name:e.target.value}))}/>
-    </div>
-    <input class="in" type="tel" style=${{marginTop:6}} placeholder="Mobile number" value=${draft.mobile} onInput=${e=>setDraft(d=>({...d,mobile:e.target.value}))}/>
-    ${!draft.id&&(draft.parents||[]).length>1&&html`<select class="in" style=${{marginTop:6}} value=${draft.parent_id} onChange=${e=>setDraft(d=>({...d,parent_id:e.target.value}))}>${(draft.parents||[]).map(pp=>html`<option key=${pp.id} value=${pp.id}>Save under ${pp.name||'parent'}</option>`)}</select>`}
-    <div style=${{display:'flex',gap:8,marginTop:8}}>
-      <button class="btn" style=${{flex:1}} disabled=${busy} onClick=${save}>${busy?'Saving…':'Save'}</button>
-      ${draft.id?html`<button class="chip" style=${{color:C.urgent}} disabled=${busy} onClick=${del}>Remove</button>`:''}
-      <button class="chip" disabled=${busy} onClick=${cancel}>Cancel</button>
-    </div>
-  </div>`
-  return html`<div>
-    <h2 class="serif" style=${{color:C.navy,marginTop:4}}>Parent contacts</h2>
-    <p class="muted" style=${{fontSize:12,marginTop:0,lineHeight:1.5}}>Tap a number to call it straight from your phone — no copying needed. Tap ✏️ to correct a number, name or label, or ＋ Add to add one.</p>
-    <input class="in" style=${{marginTop:0}} placeholder="Search pupil, parent or number…" value=${q} onInput=${e=>setQ(e.target.value)}/>
-    ${data&&html`<div class="muted" style=${{fontSize:12,margin:'8px 2px'}}>${pupils.length} pupils · ${withNum} with a number on file${ql?` · ${filtered.length} match`:''}</div>`}
-    ${data===null&&html`<div class="muted">Loading…</div>`}
-    ${filtered.map(p=>html`<div key=${p.pupil_id} class="card" style=${{padding:'10px 12px',marginBottom:8}}>
-      <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8}}>
-        <div><b>${p.name}</b>${p.year?html`<span class="muted" style=${{fontSize:11,marginLeft:6}}>${p.year}</span>`:''}</div>
-        ${edit==='new-'+p.pupil_id?'':html`<button class="chip" onClick=${()=>startAdd(p)}>＋ Add</button>`}
-      </div>
-      ${(p.contacts||[]).length===0&&edit!=='new-'+p.pupil_id?html`<div class="muted" style=${{fontSize:12,marginTop:4}}>No number on file.</div>`:''}
-      ${(p.contacts||[]).map((c,i)=> edit==='c-'+c.id
-        ? html`<div key=${c.id}>${form()}</div>`
-        : html`<div key=${c.id||i} style=${{display:'flex',gap:6,alignItems:'stretch',marginTop:6}}>
-            <a href=${sani(c.mobile)} style=${{flex:1,minWidth:0,display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,padding:'10px 12px',border:'1px solid '+C.line,borderRadius:12,textDecoration:'none',color:C.ink}}>
-              <span style=${{minWidth:0}}><b style=${{color:C.navy,fontSize:15,letterSpacing:'.2px'}}>${c.mobile}</b><div class="muted" style=${{fontSize:11,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>${[c.label,c.name||c.parent_name].filter(Boolean).join(' · ')}${c.primary?' · preferred':''}</div></span>
-              <span style=${{flexShrink:0,background:C.green,color:'#fff',borderRadius:999,padding:'7px 14px',fontSize:13,fontWeight:700}}>📞 Call</span>
-            </a>
-            <button class="chip" style=${{alignSelf:'center'}} onClick=${()=>startEdit(c)}>✏️</button>
-          </div>`)}
-      ${edit==='new-'+p.pupil_id?form():''}
-    </div>`)}
-    ${data&&filtered.length===0&&html`<div class="card muted" style=${{padding:16}}>No match.</div>`}
     ${toast&&html`<div style=${{position:'fixed',left:'50%',bottom:24,transform:'translateX(-50%)',background:'#0E1D38',color:'#fff',padding:'10px 16px',borderRadius:999,fontSize:14,maxWidth:'90%',textAlign:'center'}}>${toast}</div>`}
   </div>`}
 
