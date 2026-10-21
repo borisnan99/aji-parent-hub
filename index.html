@@ -1967,38 +1967,82 @@ function Attendance({profile}){
     ${toast&&html`<div style=${{position:'fixed',left:'50%',bottom:24,transform:'translateX(-50%)',background:'#0E1D38',color:'#fff',padding:'10px 16px',borderRadius:999,fontSize:14,maxWidth:'90%',textAlign:'center'}}>${toast}</div>`}
   </div>`}
 
+const DET_TYPE={break:'Break-time · 15 min',dinner:'Dinner-time',saturday:'Saturday'}
 function Detentions({profile}){
   const [rows,setRows]=useState(null);const [filter,setFilter]=useState('scheduled');const [busy,setBusy]=useState('')
+  const canAssign=profile.role==='admin'||(profile.email||'').toLowerCase()==='yasin.patel@boltondarululoom.org.uk'||(profile.full_name||'').trim().toLowerCase()==='yasin patel'
+  const [pupils,setPupils]=useState([]);const [show,setShow]=useState(false)
+  const [q,setQ]=useState('');const [sel,setSel]=useState(null)
+  const [kind,setKind]=useState('break');const today=new Date().toISOString().slice(0,10);const [date,setDate]=useState(today)
+  const [mode,setMode]=useState('notify');const [note,setNote]=useState('')
+  const [aBusy,setABusy]=useState(false);const [toast,setToast]=useState('')
+  const fire=m=>{setToast(m);setTimeout(()=>setToast(''),4000)}
   async function load(){const {data}=await sb.from('detentions').select('*,pupils(first_name,last_name,academic_year)').order('detention_date',{ascending:false});setRows(data||[])}
-  useEffect(()=>{load();const ch=sb.channel('dets').on('postgres_changes',{event:'*',schema:'parent_hub',table:'detentions'},()=>load()).subscribe();return()=>sb.removeChannel(ch)},[])
+  async function loadPupils(){const {data}=await sb.from('pupils').select('id,first_name,last_name,academic_year,is_active').order('last_name');setPupils((data||[]).filter(p=>p.is_active!==false))}
+  useEffect(()=>{load();if(canAssign)loadPupils();const ch=sb.channel('dets').on('postgres_changes',{event:'*',schema:'parent_hub',table:'detentions'},()=>load()).subscribe();return()=>sb.removeChannel(ch)},[])
   async function setStatus(id,status){setBusy(id);await sb.from('detentions').update({status}).eq('id',id);setBusy('');load()}
   const fmt=d=>{const x=new Date(d+'T00:00:00');return x.toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short',year:'numeric'})}
   const list=(rows||[]).filter(r=>filter==='all'?true:r.status===filter)
   const upcoming=(rows||[]).filter(r=>r.status==='scheduled').length
   const FILT=[['scheduled','Scheduled'],['completed','Completed'],['cancelled','Cancelled'],['all','All']]
   const stCol={scheduled:{bg:'#FBECC9',fg:'#8A6D1B'},completed:{bg:'#E5EEE7',fg:C.green},cancelled:{bg:'#ECECEC',fg:'#888'}}
+  const ql=q.trim().toLowerCase()
+  const matches=ql?pupils.filter(p=>(p.first_name+' '+p.last_name).toLowerCase().includes(ql)).slice(0,8):[]
+  async function assign(){
+    if(!sel){fire('Choose a pupil first');return}
+    if(mode==='note'&&!note.trim()){fire('Write the note, or switch to “Just notify”');return}
+    setABusy(true);const {data,error}=await sb.functions.invoke('detention-assign',{body:{pupil_id:sel.id,kind,date,note:mode==='note'?note.trim():''}});setABusy(false)
+    if(error||(data&&data.error)){fire((data&&data.error)||'Error assigning');return}
+    fire('Detention assigned · parents notified'+(data.delivered?' ('+data.delivered+' email'+(data.delivered>1?'s':'')+')':''))
+    setSel(null);setQ('');setNote('');setMode('notify');setKind('break');setDate(today);setShow(false);load()}
   return html`<div>
     <div class="card" style=${{padding:'12px 16px',marginBottom:12,background:C.navy,color:'#fff',border:'none'}}>
-      <div style=${{fontSize:11,color:'#AEBAD0'}}>Upcoming Saturday detentions</div>
+      <div style=${{fontSize:11,color:'#AEBAD0'}}>Scheduled detentions</div>
       <div class="serif" style=${{fontSize:24,fontWeight:700}}>${upcoming}</div>
-      <div style=${{fontSize:11,color:'#AEBAD0',marginTop:2}}>Auto-assigned after 2 morning lates in a week (Mon-Fri)</div>
+      <div style=${{fontSize:11,color:'#AEBAD0',marginTop:2}}>Break & dinner assigned here · Saturday auto-assigned after 2 morning lates (Mon–Fri)</div>
     </div>
+    ${canAssign&&html`<div style=${{marginBottom:12}}>
+      ${!show?html`<button class="btn gold" onClick=${()=>setShow(true)}>+ Assign a detention</button>`:html`<div class="card" style=${{padding:14}}>
+        <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center'}}><b class="serif" style=${{color:C.navy,fontSize:16}}>Assign a detention</b><button class="chip" onClick=${()=>{setShow(false);setSel(null);setQ('')}}>Close</button></div>
+        <div class="lbl" style=${{marginTop:12}}>Pupil</div>
+        ${sel?html`<div class="card" style=${{padding:'8px 11px',marginTop:4,display:'flex',justifyContent:'space-between',alignItems:'center'}}><span><b>${sel.first_name} ${sel.last_name}</b> <span class="muted" style=${{fontSize:11}}>${sel.academic_year||''}</span></span><button class="chip" onClick=${()=>{setSel(null);setQ('')}}>Change</button></div>`
+          :html`<div><input class="in" placeholder="Search pupil by name…" value=${q} onInput=${e=>setQ(e.target.value)}/>
+          ${matches.length>0&&html`<div class="card" style=${{marginTop:6,maxHeight:200,overflow:'auto'}}>${matches.map(p=>html`<div key=${p.id} onClick=${()=>{setSel(p);setQ('')}} style=${{padding:'8px 11px',borderBottom:'1px solid #F2EFE6',cursor:'pointer'}}><b>${p.first_name} ${p.last_name}</b> <span class="muted" style=${{fontSize:11}}>${p.academic_year||''}</span></div>`)}</div>`}
+          ${ql&&matches.length===0&&html`<div class="muted" style=${{fontSize:12,marginTop:6}}>No match.</div>`}</div>`}
+        <div class="lbl" style=${{marginTop:12}}>Type</div>
+        <div style=${{display:'flex',gap:8,marginTop:4}}>
+          <button class="chip ${kind==='break'?'on':''}" style=${{flex:1}} onClick=${()=>setKind('break')}>Break-time · 15 min</button>
+          <button class="chip ${kind==='dinner'?'on':''}" style=${{flex:1}} onClick=${()=>setKind('dinner')}>Dinner-time · full</button>
+        </div>
+        <div class="lbl" style=${{marginTop:12}}>Date</div>
+        <input class="in" type="date" value=${date} onInput=${e=>setDate(e.target.value)}/>
+        <div class="lbl" style=${{marginTop:12}}>Message to parents</div>
+        <div style=${{display:'flex',gap:8,marginTop:4}}>
+          <button class="chip ${mode==='notify'?'on':''}" style=${{flex:1}} onClick=${()=>setMode('notify')}>Just notify them</button>
+          <button class="chip ${mode==='note'?'on':''}" style=${{flex:1}} onClick=${()=>setMode('note')}>Add a short note</button>
+        </div>
+        ${mode==='note'?html`<textarea class="in" style=${{minHeight:84,resize:'vertical',fontFamily:'inherit',marginTop:8}} placeholder="Why they've been given the detention — this goes straight to the parents." value=${note} onInput=${e=>setNote(e.target.value)}></textarea>`
+          :html`<div class="muted" style=${{fontSize:11,marginTop:6,lineHeight:1.5}}>Parents get a short note telling them ${sel?sel.first_name:'their son'} has a ${kind==='dinner'?'dinner-time':'15-minute break-time'} detention on ${fmt(date)}.</div>`}
+        <button class="btn" style=${{marginTop:12}} disabled=${aBusy||!sel} onClick=${assign}>${aBusy?'Assigning…':'Assign & notify parents'}</button>
+      </div>`}
+    </div>`}
     <div style=${{display:'flex',gap:8,marginBottom:10,flexWrap:'wrap'}}>${FILT.map(([k,l])=>html`<button key=${k} class="chip ${filter===k?'on':''}" onClick=${()=>setFilter(k)}>${l}</button>`)}</div>
     ${rows===null&&html`<div class="muted">Loading...</div>`}
     ${rows&&list.length===0&&html`<div class="card muted" style=${{padding:16}}>No ${filter==='all'?'':filter+' '}detentions.</div>`}
-    ${list.map(r=>{const p=r.pupils||{};const sc=stCol[r.status]||stCol.scheduled
+    ${list.map(r=>{const p=r.pupils||{};const sc=stCol[r.status]||stCol.scheduled;const tl=DET_TYPE[r.detention_type]||'Saturday'
       return html`<div key=${r.id} class="card" style=${{padding:'12px 14px',marginBottom:8}}>
-        <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-          <div><b>${p.first_name} ${p.last_name}</b><div class="muted" style=${{fontSize:11}}>${p.academic_year||''}</div></div>
-          <span class="tag" style=${{background:sc.bg,color:sc.fg,padding:'6px 12px',textTransform:'capitalize'}}>${r.status}</span>
+        <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8}}>
+          <div style=${{minWidth:0}}><b>${p.first_name} ${p.last_name}</b><div class="muted" style=${{fontSize:11}}>${p.academic_year||''}</div></div>
+          <div style=${{display:'flex',gap:6,flexShrink:0}}><span class="tag" style=${{background:'#EDF0F6',color:C.navy,padding:'6px 10px'}}>${tl}</span><span class="tag" style=${{background:sc.bg,color:sc.fg,padding:'6px 12px',textTransform:'capitalize'}}>${r.status}</span></div>
         </div>
-        <div style=${{marginTop:8,fontSize:14}}><b>Detention:</b> ${fmt(r.detention_date)}</div>
-        <div class="muted" style=${{fontSize:12,marginTop:2}}>${r.reason||''}${r.notified_at?' · parent notified':''}</div>
+        <div style=${{marginTop:8,fontSize:14}}><b>${fmt(r.detention_date)}</b></div>
+        <div class="muted" style=${{fontSize:12,marginTop:2}}>${r.reason||''}${r.notified_at?' · parents notified':''}</div>
         ${r.status==='scheduled'&&html`<div style=${{display:'flex',gap:8,marginTop:10}}>
           <button class="chip" disabled=${busy===r.id} onClick=${()=>setStatus(r.id,'completed')}>Mark done</button>
           <button class="chip" disabled=${busy===r.id} onClick=${()=>setStatus(r.id,'cancelled')}>Cancel</button></div>`}
         ${r.status!=='scheduled'&&html`<div style=${{marginTop:10}}><button class="chip" disabled=${busy===r.id} onClick=${()=>setStatus(r.id,'scheduled')}>Reinstate</button></div>`}
       </div>`})}
+    ${toast&&html`<div style=${{position:'fixed',left:'50%',bottom:24,transform:'translateX(-50%)',background:'#0E1D38',color:'#fff',padding:'10px 16px',borderRadius:999,fontSize:14,maxWidth:'90%',textAlign:'center'}}>${toast}</div>`}
   </div>`}
 
 function Users({profile}){
