@@ -1506,8 +1506,8 @@ function Dashboard({profile,onSignOut}){
         <div style=${{color:'#AEBAD0',fontSize:10}}>Al Jamiatul Islamiyah</div></div></div>
       <button onClick=${onSignOut} style=${{background:'transparent',border:'1px solid rgba(255,255,255,.3)',color:'#fff',borderRadius:10,padding:'6px 10px',fontSize:12,cursor:'pointer'}}>Sign out</button></div>
     <div style=${{height:3,background:`linear-gradient(90deg,${C.gold},${C.goldSoft})`}}></div>
-    <div style=${{padding:'8px 16px 0',display:'flex',gap:8,flexWrap:'wrap'}}>${['overview','pupils','attendance','league',...(canManage?['engagement']:[]),'praise','detentions','behaviour','safeguarding',...(canMedFire?['medical','firedrills']:[]),...(canIncident?['incidents']:[]),...(canBoarding?['boarding']:[]),...(canSup?['supervisor']:[]),...(canKit?['kitchen']:[]),...(canManage?['contacts','marks','dataprotection','users']:[]),'announce','inbox'].map(t=>html`
-      <button key=${t} onClick=${()=>setTab(t)} class="chip ${tab===t?'on':''}">${t==='overview'?'Overview':t==='pupils'?'Pupils':t==='attendance'?'Attendance':t==='league'?'League':t==='engagement'?'Engagement':t==='praise'?'Praise':t==='detentions'?'Detentions':t==='behaviour'?'Behaviour':t==='safeguarding'?'Safeguarding':t==='medical'?'Medical':t==='firedrills'?'Fire drills':t==='incidents'?'Injuries':t==='boarding'?'Boarding':t==='supervisor'?'Supervisor':t==='kitchen'?'Kitchen':t==='contacts'?'Contacts':t==='marks'?'Exam marks':t==='dataprotection'?'Data protection':t==='users'?'Users':t==='announce'?'Announce':'Inbox'}</button>`)}</div>
+    <div style=${{padding:'8px 16px 0',display:'flex',gap:8,flexWrap:'wrap'}}>${['overview','notices','pupils','attendance','league',...(canManage?['engagement']:[]),'praise','detentions','behaviour','safeguarding',...(canMedFire?['medical','firedrills']:[]),...(canIncident?['incidents']:[]),...(canBoarding?['boarding']:[]),...(canSup?['supervisor']:[]),...(canKit?['kitchen']:[]),...(canManage?['contacts','marks','dataprotection','users']:[]),'announce','inbox'].map(t=>html`
+      <button key=${t} onClick=${()=>setTab(t)} class="chip ${tab===t?'on':''}">${t==='overview'?'Overview':t==='notices'?'Notices':t==='pupils'?'Pupils':t==='attendance'?'Attendance':t==='league'?'League':t==='engagement'?'Engagement':t==='praise'?'Praise':t==='detentions'?'Detentions':t==='behaviour'?'Behaviour':t==='safeguarding'?'Safeguarding':t==='medical'?'Medical':t==='firedrills'?'Fire drills':t==='incidents'?'Injuries':t==='boarding'?'Boarding':t==='supervisor'?'Supervisor':t==='kitchen'?'Kitchen':t==='contacts'?'Contacts':t==='marks'?'Exam marks':t==='dataprotection'?'Data protection':t==='users'?'Users':t==='announce'?'Announce':'Inbox'}</button>`)}</div>
     <div style=${{padding:16}}>
       ${pupils===null&&html`<div class="muted">Loading live data…</div>`}
       ${tab==='overview'&&pupils&&html`<div>
@@ -1553,6 +1553,7 @@ function Dashboard({profile,onSignOut}){
       ${tab==='users'&&canManage&&html`<${Users} profile=${profile}/>`}
       ${tab==='marks'&&canManage&&html`<${WeeklyMarks} profile=${profile}/>`}
       ${tab==='contacts'&&canManage&&html`<${Contacts} profile=${profile}/>`}
+      ${tab==='notices'&&html`<${StaffNotices} profile=${profile}/>`}
       ${editPupil&&html`<${PupilEditor} pupil=${editPupil} classes=${classes} onClose=${()=>setEditPupil(null)} onSaved=${m=>{setEditPupil(null);fire(m);load()}}/>`}
     </div>
     <${PrivacyFooter} staff=${true}/>
@@ -2125,6 +2126,84 @@ function Contacts({profile}){
       ${edit==='new-'+p.pupil_id?form():''}
     </div>`)}
     ${data&&filtered.length===0&&html`<div class="card muted" style=${{padding:16}}>No match.</div>`}
+    ${toast&&html`<div style=${{position:'fixed',left:'50%',bottom:24,transform:'translateX(-50%)',background:'#0E1D38',color:'#fff',padding:'10px 16px',borderRadius:999,fontSize:14,maxWidth:'90%',textAlign:'center'}}>${toast}</div>`}
+  </div>`}
+
+const PRIO={urgent:{l:'Urgent',c:C.urgent,bg:C.urgentSoft},important:{l:'Important',c:'#8A6D1B',bg:C.goldSoft},update:{l:'Update',c:C.navy,bg:'#EDF0F6'}}
+function StaffNotices({profile}){
+  const [data,setData]=useState(null);const [mode,setMode]=useState('received');const [open,setOpen]=useState(null)
+  const [busy,setBusy]=useState(false);const [toast,setToast]=useState('')
+  const fire=m=>{setToast(m);setTimeout(()=>setToast(''),4200)}
+  const [pri,setPri]=useState('update');const [subject,setSubject]=useState('');const [bodyTxt,setBodyTxt]=useState('');const [emailNow,setEmailNow]=useState(false)
+  const [sent,setSent]=useState(null);const [detail,setDetail]=useState({})
+  async function load(){const {data:r,error}=await sb.functions.invoke('staff-notices',{body:{action:'inbox'}});if(error||(r&&r.error)){setData({messages:[],is_admin:false});return}setData(r)}
+  useEffect(()=>{load()},[])
+  const isAdmin=data?data.is_admin:false
+  const fmt=d=>d?new Date(d).toLocaleDateString('en-GB',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}):''
+  const badge=p=>{const x=PRIO[p]||PRIO.update;return html`<span class="tag" style=${{background:x.bg,color:x.c,padding:'3px 9px'}}>${x.l}</span>`}
+  async function openMsg(m){const willOpen=open!==m.id;setOpen(willOpen?m.id:null);if(willOpen&&!m.read){await sb.functions.invoke('staff-notices',{body:{action:'read',message_id:m.id}});load()}}
+  async function markAll(){await sb.functions.invoke('staff-notices',{body:{action:'read_all'}});load()}
+  async function send(){if(!bodyTxt.trim()){fire('Write a message');return}
+    if(!window.confirm('Send this '+PRIO[pri].l+' notice to all staff'+(emailNow?', and email it to them now':'')+'?'))return
+    setBusy(true);const {data:r,error}=await sb.functions.invoke('staff-notices',{body:{action:'send',priority:pri,subject,body:bodyTxt,email_now:emailNow}});setBusy(false)
+    if(error||(r&&r.error)){fire((r&&r.error)||'Error sending');return}
+    fire('Sent to '+r.recipients+' staff'+(r.emailed?' · '+r.emailed+' emailed':''));setSubject('');setBodyTxt('');setPri('update');setEmailNow(false);setSent(null);setMode('sent');load()}
+  async function loadSent(){setSent(null);const {data:r}=await sb.functions.invoke('staff-notices',{body:{action:'sent'}});setSent((r&&r.messages)||[])}
+  useEffect(()=>{if(mode==='sent'&&isAdmin&&sent===null)loadSent()},[mode,isAdmin])
+  async function loadDetail(id){const {data:r}=await sb.functions.invoke('staff-notices',{body:{action:'sent_detail',message_id:id}});setDetail(d=>({...d,[id]:(r&&r.people)||[]}))}
+  async function emailUnread(m){const n=m.total-m.read;if(n<=0)return;if(!window.confirm('Email the '+n+' staff who haven’t opened this yet?'))return
+    setBusy(true);const {data:r,error}=await sb.functions.invoke('staff-notices',{body:{action:'email_unread',message_id:m.id}});setBusy(false)
+    if(error||(r&&r.error)){fire((r&&r.error)||'Error');return}fire(r.emailed?('Emailed '+r.emailed):'Everyone has already opened it');loadSent()}
+  return html`<div>
+    <h2 class="serif" style=${{color:C.navy,marginTop:4}}>Staff notices</h2>
+    ${isAdmin&&html`<div style=${{display:'flex',gap:6,marginBottom:12,flexWrap:'wrap'}}>
+      <button class="chip ${mode==='received'?'on':''}" onClick=${()=>setMode('received')}>Received${data&&data.unread?' ('+data.unread+')':''}</button>
+      <button class="chip ${mode==='compose'?'on':''}" onClick=${()=>setMode('compose')}>＋ New notice</button>
+      <button class="chip ${mode==='sent'?'on':''}" onClick=${()=>{setMode('sent');}}>Sent</button>
+    </div>`}
+
+    ${mode==='received'&&html`<div>
+      ${!isAdmin&&html`<p class="muted" style=${{fontSize:12,marginTop:0}}>Updates from the school leadership.</p>`}
+      ${data&&data.unread>0&&html`<div style=${{textAlign:'right',marginBottom:6}}><button class="chip" onClick=${markAll}>Mark all read</button></div>`}
+      ${data===null&&html`<div class="muted">Loading…</div>`}
+      ${data&&data.messages.length===0&&html`<div class="card muted" style=${{padding:16}}>No notices yet.</div>`}
+      ${(data?data.messages:[]).map(m=>{const isOpen=open===m.id;const x=PRIO[m.priority]||PRIO.update;return html`<div key=${m.id} class="card" style=${{padding:0,marginBottom:8,overflow:'hidden',borderLeft:'4px solid '+x.c}}>
+        <div onClick=${()=>openMsg(m)} style=${{padding:'10px 12px',cursor:'pointer'}}>
+          <div style=${{display:'flex',gap:8,alignItems:'center'}}>${badge(m.priority)}${!m.read?html`<span class="tag" style=${{background:C.navy,color:'#fff'}}>New</span>`:''}</div>
+          <div style=${{fontWeight:m.read?500:700,marginTop:5,color:C.navy}}>${m.subject||(m.body.length>64?m.body.slice(0,64)+'…':m.body)}</div>
+          <div class="muted" style=${{fontSize:11,marginTop:2}}>${m.sender_name} · ${fmt(m.created_at)}</div>
+        </div>
+        ${isOpen&&html`<div style=${{padding:'0 12px 12px'}}>${m.subject?html`<div style=${{fontWeight:700,marginBottom:4}}>${m.subject}</div>`:''}<div style=${{whiteSpace:'pre-wrap',fontSize:14,lineHeight:1.55}}>${m.body}</div></div>`}
+      </div>`})}
+    </div>`}
+
+    ${mode==='compose'&&isAdmin&&html`<div class="card" style=${{padding:14}}>
+      <div class="lbl">Priority</div>
+      <div style=${{display:'flex',gap:6,marginTop:4}}>${['urgent','important','update'].map(k=>{const x=PRIO[k];return html`<button key=${k} class="chip" style=${pri===k?{background:x.c,borderColor:x.c,color:'#fff'}:{}} onClick=${()=>setPri(k)}>${x.l}</button>`})}</div>
+      <div class="lbl" style=${{marginTop:12}}>Subject <span class="muted" style=${{fontWeight:400}}>(optional)</span></div>
+      <input class="in" placeholder="e.g. Staff meeting moved to 4pm" value=${subject} onInput=${e=>setSubject(e.target.value)}/>
+      <div class="lbl" style=${{marginTop:12}}>Message</div>
+      <textarea class="in" style=${{minHeight:130,resize:'vertical',fontFamily:'inherit'}} placeholder="Type the update for all staff…" value=${bodyTxt} onInput=${e=>setBodyTxt(e.target.value)}></textarea>
+      <label style=${{display:'flex',gap:8,alignItems:'center',marginTop:12,fontSize:13,cursor:'pointer'}}><input type="checkbox" checked=${emailNow} onChange=${e=>setEmailNow(e.target.checked)}/><span>Also email all staff now</span></label>
+      <div class="muted" style=${{fontSize:11,marginTop:6,lineHeight:1.5}}>Everyone gets a notification in the app. If you don't email now, you can email just the staff who haven't opened it later, from <b>Sent</b>.</div>
+      <button class="btn" style=${{marginTop:12}} disabled=${busy} onClick=${send}>${busy?'Sending…':'Send to all staff'}</button>
+    </div>`}
+
+    ${mode==='sent'&&isAdmin&&html`<div>
+      ${sent===null&&html`<div class="muted">Loading…</div>`}
+      ${sent&&sent.length===0&&html`<div class="card muted" style=${{padding:16}}>No notices sent yet.</div>`}
+      ${(sent||[]).map(m=>{const x=PRIO[m.priority]||PRIO.update;const unread=m.total-m.read;const det=detail[m.id];return html`<div key=${m.id} class="card" style=${{padding:'10px 12px',marginBottom:8,borderLeft:'4px solid '+x.c}}>
+        <div style=${{display:'flex',justifyContent:'space-between',gap:8,alignItems:'flex-start'}}>
+          <div style=${{minWidth:0}}>${badge(m.priority)}<div style=${{fontWeight:700,color:C.navy,marginTop:4}}>${m.subject||m.body.slice(0,50)}</div><div class="muted" style=${{fontSize:11,marginTop:2}}>${m.sender_name} · ${fmt(m.created_at)}</div></div>
+          <div style=${{textAlign:'right',flexShrink:0}}><div style=${{fontWeight:700,color:C.navy,fontSize:16}}>${m.read}/${m.total}</div><div class="muted" style=${{fontSize:11}}>read</div></div>
+        </div>
+        <div style=${{display:'flex',gap:8,marginTop:8,flexWrap:'wrap'}}>
+          <button class="chip" onClick=${()=>det?setDetail(d=>({...d,[m.id]:undefined})):loadDetail(m.id)}>${det?'Hide list':'Who’s read it'}</button>
+          ${unread>0?html`<button class="chip" style=${{color:C.navy}} disabled=${busy} onClick=${()=>emailUnread(m)}>✉️ Email the ${unread} who haven’t opened it</button>`:html`<span class="tag" style=${{background:'#E5EEE7',color:C.green,padding:'4px 10px'}}>Everyone opened it</span>`}
+        </div>
+        ${det&&html`<div style=${{marginTop:8,maxHeight:220,overflow:'auto',border:'1px solid '+C.line,borderRadius:10}}>${det.map((pp,i)=>html`<div key=${i} style=${{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'6px 10px',fontSize:13,borderTop:i?'1px solid #F2EFE6':'none'}}><span>${pp.name}</span><span class="tag" style=${pp.read?{background:'#E5EEE7',color:C.green}:{background:C.urgentSoft,color:C.urgent}}>${pp.read?'Read':(pp.emailed?'Emailed':'Unread')}</span></div>`)}</div>`}
+      </div>`})}
+    </div>`}
     ${toast&&html`<div style=${{position:'fixed',left:'50%',bottom:24,transform:'translateX(-50%)',background:'#0E1D38',color:'#fff',padding:'10px 16px',borderRadius:999,fontSize:14,maxWidth:'90%',textAlign:'center'}}>${toast}</div>`}
   </div>`}
 
