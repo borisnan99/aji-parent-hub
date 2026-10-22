@@ -600,7 +600,7 @@ function BoardingChecks({profile,fire}){
   function toggle(pid,w){setDraft(dr=>{const s={...dr.iss[pid]};if(w==='bed')s.bedOn=!s.bedOn;else s.cupOn=!s.cupOn;return {...dr,iss:{...dr.iss,[pid]:s}}})}
   function setTxt(pid,w,v){setDraft(dr=>{const s={...dr.iss[pid]};if(w==='bed')s.bedTxt=v;else s.cupTxt=v;return {...dr,iss:{...dr.iss,[pid]:s}}})}
   async function save(roomId,payload){setBusy(true);const {data,error}=await sb.functions.invoke('boarding-check',{body:{action:'save',room_id:roomId,date,...payload}});setBusy(false);if(error||(data&&data.error)){fire((data&&data.error)||'Error saving');return}
-    let msg='Saved';if(data.flagged)msg='Saved · restrictor flagged to Maulana Gulfam';const nf=data.tidy&&data.tidy.flags?data.tidy.flags.filter(f=>!f.sent).length:0;if(nf)msg+=' · '+nf+' tidy alert'+(nf>1?'s':'')+' this week';fire(msg);setOpen(null);load(date)}
+    let msg='Saved';if(data.flagged)msg='Saved · restrictor flagged to the Head of Boarding';const nf=data.tidy&&data.tidy.flags?data.tidy.flags.filter(f=>!f.sent).length:0;if(nf)msg+=' · '+nf+' tidy alert'+(nf>1?'s':'')+' this week';fire(msg);setOpen(null);load(date)}
   function saveRoom(r){const issues=(occ[r.id]||[]).map(o=>{const s=draft.iss[o.pupil_id]||{};return {pupil_id:o.pupil_id,bed_issue:s.bedOn?(s.bedTxt.trim()||'Untidy'):null,cupboard_issue:s.cupOn?(s.cupTxt.trim()||'Untidy'):null}});save(r.id,{...draft.fab,notes:draft.notes,issues})}
   function allGood(r){save(r.id,{carpet_ok:true,light_ok:true,switch_ok:true,radiator_ok:true,window_ok:true,restrictor_ok:true,notes:'',issues:[]})}
   async function resolve(f){const {data,error}=await sb.functions.invoke('boarding-check',{body:{action:'resolve',room_id:f.room_id,date:f.check_date}});if(error||(data&&data.error)){fire((data&&data.error)||'Error');return}fire('Marked done');load(date)}
@@ -650,13 +650,13 @@ function BoardingChecks({profile,fire}){
             <button class="chip" style=${{background:draft.fab[k]===false?C.urgent:'',color:draft.fab[k]===false?'#fff':''}} onClick=${()=>setDraft(dr=>({...dr,fab:{...dr.fab,[k]:false}}))}>Issue</button>
           </div>
         </div>`)}
-        ${draft.fab.restrictor_ok===false&&html`<div style=${{fontSize:11,color:C.urgent,margin:'2px 0 6px'}}>This will be flagged to Maulana Gulfam immediately on save.</div>`}
+        ${draft.fab.restrictor_ok===false&&html`<div style=${{fontSize:11,color:C.urgent,margin:'2px 0 6px'}}>This will be flagged to the Head of Boarding (Maulana Luqman Amla) immediately on save.</div>`}
         <textarea class="in" style=${{minHeight:48,resize:'vertical',fontFamily:'inherit'}} placeholder="Notes (optional)…" value=${draft.notes||''} onInput=${e=>setDraft(dr=>({...dr,notes:e.target.value}))}></textarea>
         <button class="btn" style=${{marginTop:8}} disabled=${busy} onClick=${()=>saveRoom(r)}>${busy?'Saving…':'Save check'}</button>
       </div>`}
     </div>`}
   return html`<div>
-    <p class="muted" style=${{fontSize:12,marginTop:0}}>Beds, cupboards, carpets, lights, switches, radiators, windows and window restrictors. A missing restrictor is flagged to Maulana Gulfam straight away; an untidy bed or cupboard twice in a week raises a tidy alert.</p>
+    <p class="muted" style=${{fontSize:12,marginTop:0}}>Beds, cupboards, carpets, lights, switches, radiators, windows and window restrictors. A missing restrictor is flagged to the Head of Boarding (Maulana Luqman Amla) straight away; an untidy bed or cupboard twice in a week raises a tidy alert.</p>
     <div style=${{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap',marginBottom:10}}>
       <input class="in" type="date" style=${{marginTop:0,width:'auto'}} value=${date} onInput=${e=>setDate(e.target.value)}/>
       <button class="chip" onClick=${exportCsv}>📄 Month CSV</button>
@@ -1197,7 +1197,7 @@ function Medical({profile}){
       ${(mrows||[]).map(r=>html`<div key=${r.id} class="card" style=${{padding:'9px 12px',marginBottom:6}}><div style=${{display:'flex',justifyContent:'space-between'}}><b>${r.pupil_name}</b><span class="muted" style=${{fontSize:11}}>${fmt(r.administered_at)}</span></div><div style=${{fontSize:13,marginTop:2}}>${r.medication}${r.dose?' · '+r.dose:''}${r.reason?' · '+r.reason:''}</div><div class="muted" style=${{fontSize:11,marginTop:2}}>by ${r.given_by||''}${r.parent_notified?' · parent notified':''}</div></div>`)}
     </div>`}
     ${mode==='triage'&&html`<div>
-      <p class="muted" style=${{fontSize:12,marginTop:0}}>Non-emergency clinic with Maulana Luqman, 5:30–6:30pm. Book a pupil into a slot with the reason; record the outcome after.</p>
+      <p class="muted" style=${{fontSize:12,marginTop:0}}>Non-emergency clinic with Dr Suhel Ahmed, 5:30–6:30pm. Book a pupil into a slot with the reason; record the outcome after.</p>
       <input class="in" type="date" style=${{maxWidth:190}} value=${tdate} onInput=${e=>setTdate(e.target.value)}/>
       ${slots===null&&html`<div class="muted" style=${{marginTop:10}}>Loading…</div>`}
       ${(slots||[]).map(sl=>{const b=sl.booking;const isOpen=openSlot===sl.slot;const dft=(b&&od[b.id])||{}

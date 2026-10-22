@@ -1,6 +1,7 @@
 // boarding-check — daily/weekly boarding room checks.
 //  • Room fabric & safety: carpets, lights, switches, radiators, windows, window restrictors.
-//    A missing/faulty window restrictor is flagged immediately to Maulana Gulfam (email + push).
+//    A missing/faulty window restrictor is flagged immediately to the Head of Boarding
+//    (Maulana Luqman Amla) and Maulana Gulfam (email + push).
 //  • Per-student tidiness: beds & cupboards checked against each room's occupants. When a bed or
 //    cupboard is untidy the checker records which pupil and what was wrong.
 //  • Twice in the same week (Mon–Sun) a pupil is flagged -> a gentle, non-disciplinary note can be
@@ -16,6 +17,7 @@ const json = (b: unknown, s = 200) => new Response(JSON.stringify(b), { status: 
 const CHECK_NAMES = ["ihsaanul haque", "gulfam khan"];
 const CHECK_EMAILS = ["ihsaanul.haque@boltondarululoom.org.uk", "gulfam.khan@boltondarululoom.org.uk"];
 const GULFAM_EMAIL = "gulfam.khan@boltondarululoom.org.uk";
+const LUQMAN_EMAIL = "luqman.amla@boltondarululoom.org.uk"; // Head of Boarding
 const bool = (v: unknown) => v === true;
 const clean = (v: unknown) => { const s = (typeof v === "string" ? v : "").trim(); return s || null; };
 
@@ -170,18 +172,26 @@ Deno.serve(async (req) => {
           const cfg: Record<string, string> = {}; (cfgRows ?? []).forEach((r: any) => (cfg[r.key] = r.value));
           const brevoReady = !!(cfg.brevo_api_key && cfg.brevo_sender_email && cfg.brevo_sender_email !== "PENDING");
           if (cfg.vapid_public) webpush.setVapidDetails(cfg.vapid_subject, cfg.vapid_public, cfg.vapid_private);
-          const { data: g } = await svc.from("profiles").select("id,email,full_name").ilike("email", GULFAM_EMAIL).maybeSingle();
+          // notify the Head of Boarding (Maulana Luqman Amla) and Maulana Gulfam Khan — email + push
+          const recipEmails = [LUQMAN_EMAIL, GULFAM_EMAIL];
+          const { data: recips } = await svc.from("profiles").select("id,email,full_name").in("email", recipEmails);
+          const byEmail: Record<string, any> = {}; (recips ?? []).forEach((r: any) => (byEmail[(r.email || "").toLowerCase()] = r));
           const noteLine = row.notes ? `\n\nNote from ${checker}: ${row.notes}` : "";
           const text = `URGENT — window restrictor flagged\n\nA boarding check has flagged a missing or faulty window restrictor in ${roomName}.\n\nChecked by: ${checker}\nDate: ${when}${noteLine}\n\nPlease action this today.`;
           const subject = `⚠ Window restrictor flagged — ${roomName}`;
-          if (brevoReady) {
-            const toEmail = g?.email || GULFAM_EMAIL;
-            try { await fetch("https://api.brevo.com/v3/smtp/email", { method: "POST", headers: { "api-key": cfg.brevo_api_key, "content-type": "application/json", accept: "application/json" }, body: JSON.stringify({ sender: { name: cfg.brevo_sender_name, email: cfg.brevo_sender_email }, to: [{ email: toEmail, name: g?.full_name || "Maulana Gulfam" }], subject, htmlContent: `<div style="font-family:system-ui,Arial,sans-serif;max-width:560px;margin:auto"><h2 style="color:#9A3334">${subject}</h2><p style="white-space:pre-wrap">${text}</p><hr style="border:none;border-top:1px solid #E8E3D6"/><p style="color:#6E6A60;font-size:12px">Al Jamiatul Islamiyah — Boarding checks</p></div>` }) }); } catch { /* ignore */ }
-          }
-          if (g?.id) {
-            const { data: subs } = await svc.from("push_subscriptions").select("endpoint,p256dh,auth").eq("user_id", g.id);
-            const payload = JSON.stringify({ title: subject, body: `${roomName}: window restrictor flagged — action today.`, url: "/", kind: "boarding" });
-            for (const s of subs ?? []) { try { await webpush.sendNotification({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, payload); } catch (e: any) { if (e?.statusCode === 404 || e?.statusCode === 410) await svc.from("push_subscriptions").delete().eq("endpoint", s.endpoint); } }
+          const payload = JSON.stringify({ title: subject, body: `${roomName}: window restrictor flagged — action today.`, url: "/", kind: "boarding" });
+          const emailedAddrs = new Set<string>();
+          for (const addr of recipEmails) {
+            const prof = byEmail[addr.toLowerCase()];
+            const toEmail = prof?.email || addr;
+            if (brevoReady && toEmail && !emailedAddrs.has(toEmail.toLowerCase())) {
+              emailedAddrs.add(toEmail.toLowerCase());
+              try { await fetch("https://api.brevo.com/v3/smtp/email", { method: "POST", headers: { "api-key": cfg.brevo_api_key, "content-type": "application/json", accept: "application/json" }, body: JSON.stringify({ sender: { name: cfg.brevo_sender_name, email: cfg.brevo_sender_email }, to: [{ email: toEmail, name: prof?.full_name || "Boarding lead" }], subject, htmlContent: `<div style="font-family:system-ui,Arial,sans-serif;max-width:560px;margin:auto"><h2 style="color:#9A3334">${subject}</h2><p style="white-space:pre-wrap">${text}</p><hr style="border:none;border-top:1px solid #E8E3D6"/><p style="color:#6E6A60;font-size:12px">Al Jamiatul Islamiyah — Boarding checks</p></div>` }) }); } catch { /* ignore */ }
+            }
+            if (prof?.id) {
+              const { data: subs } = await svc.from("push_subscriptions").select("endpoint,p256dh,auth").eq("user_id", prof.id);
+              for (const s of subs ?? []) { try { await webpush.sendNotification({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, payload); } catch (e: any) { if (e?.statusCode === 404 || e?.statusCode === 410) await svc.from("push_subscriptions").delete().eq("endpoint", s.endpoint); } }
+            }
           }
         } catch { /* best-effort */ }
       }
