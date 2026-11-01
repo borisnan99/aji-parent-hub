@@ -1252,22 +1252,26 @@ function KitchenDaily({profile,fire}){
   const [date,setDate]=useState(kToday());const [day,setDay]=useState(null);const [temps,setTemps]=useState([]);const [busy,setBusy]=useState(false)
   const [o,setO]=useState({fridge:'',freezer:'',safe:false,notes:''});const [c,setC]=useState({fridge:'',freezer:'',safe:false,notes:''})
   const [extra,setExtra]=useState('');const [tk,setTk]=useState('cooking');const [ti,setTi]=useState('');const [tt,setTt]=useState('')
+  const [ci,setCi]=useState('');const [ct,setCt]=useState('');const [cs,setCs]=useState('am')
   async function load(){const {data}=await sb.functions.invoke('kitchen',{body:{action:'daily_load',date}});if(data&&data.ok){const d=data.day;setDay(d);setTemps(data.temps||[])
     setO({fridge:d&&d.open_fridge!=null?d.open_fridge:'',freezer:d&&d.open_freezer!=null?d.open_freezer:'',safe:!!(d&&d.open_safe_methods),notes:(d&&d.open_notes)||''})
     setC({fridge:d&&d.close_fridge!=null?d.close_fridge:'',freezer:d&&d.close_freezer!=null?d.close_freezer:'',safe:!!(d&&d.close_safe_methods),notes:(d&&d.close_notes)||''})
     setExtra((d&&d.extra_checks)||'')}}
   useEffect(()=>{load()},[date])
-  const catered=!!(day&&day.catered)
+  const catered=!!(day&&day.catered);const cateredAm=!!(day&&day.catered_am);const cateredPm=!!(day&&day.catered_pm)
   async function saveCheck(which){setBusy(true);const s=which==='daily_open'?o:c;const {data,error}=await sb.functions.invoke('kitchen',{body:{action:which,date,fridge:s.fridge,freezer:s.freezer,safe_methods:s.safe,notes:s.notes}});setBusy(false);if(error||(data&&data.error)){fire((data&&data.error)||'Error');return}fire('Saved');load()}
-  async function setCatered(v){const {data}=await sb.functions.invoke('kitchen',{body:{action:'daily_meta',date,catered:v}});if(data&&data.ok){fire(v?'Marked catered — checks not required':'Checks required');load()}}
+  async function setCateredSession(which,v){const b={action:'daily_meta',date};b[which]=v;const {data}=await sb.functions.invoke('kitchen',{body:b});if(data&&data.ok){fire('Saved');load()}}
+  async function addCateredTemp(){const sess=(cs==='pm'&&cateredPm)?'pm':(cs==='am'&&cateredAm)?'am':(cateredAm?'am':cateredPm?'pm':'am');if(!ci||ct===''){fire('Add the food item and its temperature');return}const {data,error}=await sb.functions.invoke('kitchen',{body:{action:'temp_add',date,kind:'catered',session:sess,item:ci,temp:ct}});if(error||(data&&data.error)){fire((data&&data.error)||'Error');return}setCi('');setCt('');load()}
   async function saveExtra(){const {data}=await sb.functions.invoke('kitchen',{body:{action:'daily_meta',date,extra_checks:extra}});if(data&&data.ok)fire('Saved')}
   async function addTemp(){if(!ti||tt===''){fire('Add an item and temperature');return}const {data,error}=await sb.functions.invoke('kitchen',{body:{action:'temp_add',date,kind:tk,item:ti,temp:tt}});if(error||(data&&data.error)){fire((data&&data.error)||'Error');return}setTi('');setTt('');load()}
   async function delTemp(id){await sb.functions.invoke('kitchen',{body:{action:'temp_delete',id}});load()}
   async function exportMonth(){const {data}=await sb.functions.invoke('kitchen',{body:{action:'month_export',month:date.slice(0,7)}});if(!data||!data.ok){fire('Export failed');return}
-    const rows=[['Kitchen daily diary — '+date.slice(0,7)],['Date','Catered','Open fridge','Open freezer','Open safe methods','Opened by','Close fridge','Close freezer','Close safe methods','Closed by','Notes']]
-    ;(data.days||[]).forEach(d=>rows.push([d.log_date,d.catered?'Yes':'',d.open_fridge??'',d.open_freezer??'',d.open_safe_methods?'Yes':'',d.open_by_name||'',d.close_fridge??'',d.close_freezer??'',d.close_safe_methods?'Yes':'',d.close_by_name||'',[d.open_notes,d.close_notes].filter(Boolean).join(' / ')]))
+    const rows=[['Kitchen daily diary — '+date.slice(0,7)],['Date','Catered AM','Catered PM','Open fridge','Open freezer','Open safe methods','Opened by','Close fridge','Close freezer','Close safe methods','Closed by','Notes']]
+    ;(data.days||[]).forEach(d=>rows.push([d.log_date,d.catered_am?'Yes':'',d.catered_pm?'Yes':'',d.open_fridge??'',d.open_freezer??'',d.open_safe_methods?'Yes':'',d.open_by_name||'',d.close_fridge??'',d.close_freezer??'',d.close_safe_methods?'Yes':'',d.close_by_name||'',[d.open_notes,d.close_notes].filter(Boolean).join(' / ')]))
     rows.push([]);rows.push(['Cooking / reheating temperatures']);rows.push(['Date','Type','Item','°C','Pass'])
-    ;(data.temps||[]).forEach(t=>rows.push([t.log_date,t.kind,t.item||'',t.temp_c,t.pass===true?'Pass':t.pass===false?'FAIL':'']))
+    ;(data.temps||[]).filter(t=>t.kind!=='catered').forEach(t=>rows.push([t.log_date,t.kind,t.item||'',t.temp_c,t.pass===true?'Pass':t.pass===false?'FAIL':'']))
+    rows.push([]);rows.push(['Catered food received']);rows.push(['Date','Session','Item','°C'])
+    ;(data.temps||[]).filter(t=>t.kind==='catered').forEach(t=>rows.push([t.log_date,t.session==='pm'?'PM':t.session==='am'?'AM':'',t.item||'',t.temp_c]))
     const csv=rows.map(r=>r.map(x=>'"'+(x==null?'':x).toString().replace(/"/g,'""')+'"').join(',')).join(String.fromCharCode(10))
     const url=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));const a=document.createElement('a');a.href=url;a.download='kitchen_diary_'+date.slice(0,7)+'.csv';a.click();URL.revokeObjectURL(url)}
   async function printMonth(){
@@ -1282,18 +1286,21 @@ function KitchenDaily({profile,fire}){
     const esc=s=>(s==null?'':String(s)).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
     const monthLbl=new Date(y,m-1,1).toLocaleDateString('en-GB',{month:'long',year:'numeric'})
     const cell=dt=>{const d=dayMap[isod(dt)]||{}
-      const temps=(tempMap[isod(dt)]||[]).map(t=>esc(t.item)+' '+t.temp_c+'°C'+(t.pass===false?' (FAIL)':'')).join(', ')
+      const all=(tempMap[isod(dt)]||[])
+      const temps=all.filter(t=>t.kind!=='catered').map(t=>esc(t.item)+' '+t.temp_c+'°C'+(t.pass===false?' (FAIL)':'')).join(', ')
+      const catIn=all.filter(t=>t.kind==='catered').map(t=>esc(t.item)+' '+t.temp_c+'°C'+(t.session?(' ('+t.session.toUpperCase()+')'):'')).join(', ')
       const probs=[d.open_notes,d.close_notes].filter(Boolean).map(esc).join(' / ')
       const fr=(d.open_fridge!=null||d.close_fridge!=null)?('Fridge '+(d.open_fridge!=null?d.open_fridge:'–')+(d.close_fridge!=null?' / '+d.close_fridge:'')+'°C'):''
       const fz=(d.open_freezer!=null||d.close_freezer!=null)?('Freezer '+(d.open_freezer!=null?d.open_freezer:'–')+(d.close_freezer!=null?' / '+d.close_freezer:'')+'°C'):''
       const name=d.open_by_name||d.close_by_name||''
+      const catLine=(d.catered_am||d.catered_pm)?('<div class="catered">Catered: '+[d.catered_am?'morning':'',d.catered_pm?'afternoon/evening':''].filter(Boolean).join(' & ')+'</div>'):''
       return '<div class="cell"><div class="dh">'+dt.toLocaleDateString('en-GB',{weekday:'long'})+' <span>'+dt.toLocaleDateString('en-GB',{day:'numeric',month:'short'})+'</span></div>'+
-        (d.catered?'<div class="catered">Catered / no food prepared</div>':
+        catLine+
         '<div class="q">Any problems or changes – what did you do?</div><div class="ans">'+(probs||'')+'</div>'+
-        '<div class="temps">'+[fr,fz,temps?('Cooking: '+temps):''].filter(Boolean).join(' · ')+'</div>'+
+        '<div class="temps">'+[fr,fz,temps?('Cooking: '+temps):'',catIn?('Catered in: '+catIn):''].filter(Boolean).join(' · ')+'</div>'+
         '<div class="checks"><span>Opening '+(d.open_safe_methods?'☑':'☐')+'</span><span>Closing '+(d.close_safe_methods?'☑':'☐')+'</span></div>'+
         '<div class="sign">Name: '+esc(name)+' &nbsp; Signed: ______</div>'+
-        '<div class="safe">Our safe methods were followed and effectively supervised today.</div>')+'</div>'}
+        '<div class="safe">Our safe methods were followed and effectively supervised today.</div></div>'}
     const weeksHtml=Object.keys(wk).sort().map(key=>{const days=wk[key];const cells=days.map(cell).join('')
       const ex=days.map(dt=>dayMap[isod(dt)]).find(d=>d&&d.extra_checks)
       const exHtml='<div class="cell extra"><div class="dh">Extra checks this week</div><div class="ans">'+esc(ex?ex.extra_checks:'')+'</div></div>'
@@ -1302,43 +1309,70 @@ function KitchenDaily({profile,fire}){
     const doc='<!doctype html><html><head><meta charset="utf-8"><title>Kitchen Diary '+monthLbl+'</title><style>'+css+'</style></head><body><div class="head"><div class="cr">AJI</div><div><h1>Kitchen Daily Diary — '+monthLbl+'</h1><div class="sub">Al Jamiatul Islamiyah · Bolton Darul Uloom · Safer Food Better Business</div></div></div>'+weeksHtml+'<div class="foot">Printed from Parent Hub · '+new Date().toLocaleDateString('en-GB')+'</div></body></html>'
     const w=window.open('','_blank');if(!w){fire('Allow pop-ups to print the diary');return}
     w.document.write(doc);w.document.close();w.focus();setTimeout(()=>{try{w.print()}catch(e){}},500)}
+  const freezerField=(s,setS)=>{const raw=s.freezer;const has=!(raw===''||raw==null);const neg=has?Number(raw)<0:true;const mag=has?Math.abs(Number(raw)):''
+    const setMag=v=>{if(v===''){setS({...s,freezer:''});return}const m=Math.abs(parseFloat(v));if(isNaN(m))return;setS({...s,freezer:((neg?-1:1)*m).toString()})}
+    const flip=()=>{const m=has?Math.abs(Number(raw)):0;setS({...s,freezer:has?(((neg?1:-1)*m).toString()):''})}
+    return html`<div style=${{flex:1,minWidth:120}}><div class="lb" style=${{fontSize:11,fontWeight:700,marginBottom:3}}>Freezer °C</div>
+      <div style=${{display:'flex',gap:6}}>
+        <button type="button" onClick=${flip} title="Tap to switch minus / plus" style=${{width:42,borderRadius:8,border:'1px solid '+C.navy,background:neg?C.navy:'#fff',color:neg?'#fff':C.navy,fontSize:19,fontWeight:700,cursor:'pointer'}}>${neg?'−':'+'}</button>
+        <input class="in" type="number" inputmode="decimal" step="0.1" min="0" style=${{flex:1}} placeholder="18" value=${mag} onInput=${e=>setMag(e.target.value)}/>
+      </div>${(()=>{const t=freezerTag(s.freezer);return t?html`<span class="tag" style=${{background:t.bg,color:t.fg,marginTop:4,display:'inline-block'}}>${t.l}</span>`:''})()}</div>`}
   const Check=(title,s,setS,which)=>html`<div class="card" style=${{padding:'12px 14px',marginBottom:10}}>
     <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}><b>${title}</b>${day&&day[(which==='daily_open'?'open':'close')+'_by_name']?html`<span class="muted" style=${{fontSize:10}}>✓ ${day[(which==='daily_open'?'open':'close')+'_by_name']}</span>`:''}</div>
     <div style=${{display:'flex',gap:8,flexWrap:'wrap'}}>
       <div style=${{flex:1,minWidth:120}}><div class="lb" style=${{fontSize:11,fontWeight:700,marginBottom:3}}>Fridge °C</div><input class="in" type="number" step="0.1" value=${s.fridge} onInput=${e=>setS({...s,fridge:e.target.value})}/>${(()=>{const t=fridgeTag(s.fridge);return t?html`<span class="tag" style=${{background:t.bg,color:t.fg,marginTop:4,display:'inline-block'}}>${t.l}</span>`:''})()}</div>
-      <div style=${{flex:1,minWidth:120}}><div class="lb" style=${{fontSize:11,fontWeight:700,marginBottom:3}}>Freezer °C</div><input class="in" type="number" step="0.1" value=${s.freezer} onInput=${e=>setS({...s,freezer:e.target.value})}/>${(()=>{const t=freezerTag(s.freezer);return t?html`<span class="tag" style=${{background:t.bg,color:t.fg,marginTop:4,display:'inline-block'}}>${t.l}</span>`:''})()}</div>
+      ${freezerField(s,setS)}
     </div>
     <label style=${{display:'flex',gap:8,alignItems:'flex-start',marginTop:10,fontSize:12,cursor:'pointer'}}><input type="checkbox" checked=${s.safe} onChange=${e=>setS({...s,safe:e.target.checked})} style=${{marginTop:2}}/><span>Our safe methods were followed and effectively supervised.</span></label>
     <textarea class="in" style=${{marginTop:8,minHeight:46,fontFamily:'inherit'}} placeholder="Any problems or changes — what did you do?" value=${s.notes} onInput=${e=>setS({...s,notes:e.target.value})}></textarea>
     <button class="btn" style=${{marginTop:8}} disabled=${busy} onClick=${()=>saveCheck(which)}>${busy?'Saving…':'Save '+(which==='daily_open'?'opening':'closing')+' check'}</button>
   </div>`
+  const cookTemps=temps.filter(t=>t.kind!=='catered');const cateredTemps=temps.filter(t=>t.kind==='catered')
+  const sessOpts=[...(cateredAm?['am']:[]),...(cateredPm?['pm']:[])]
   return html`<div>
     <div style=${{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap',marginBottom:10}}>
       <input class="in" type="date" style=${{width:'auto'}} value=${date} onInput=${e=>setDate(e.target.value)}/>
       <button class="chip" onClick=${exportMonth}>📄 Month CSV</button>
       <button class="chip" onClick=${printMonth}>🖨 Print month</button>
-      <label style=${{display:'flex',gap:6,alignItems:'center',fontSize:12,marginLeft:'auto',cursor:'pointer'}}><input type="checkbox" checked=${catered} onChange=${e=>setCatered(e.target.checked)}/>Catered / no food prepared</label>
     </div>
-    ${catered?html`<div class="card" style=${{padding:16,color:C.muted}}>Marked as catered / no food prepared today — kitchen checks are not required. Untick above if food is being prepared.</div>`:html`<div>
-      <div class="card" style=${{padding:'9px 12px',marginBottom:10,background:'#F7F4EC',border:'1px solid '+C.line,fontSize:11,color:'#2B3443'}}><b style=${{color:C.navy}}>Targets:</b> fridge 0–5°C (action &gt;8°C) · freezer ≤ −18°C · cooking/reheating core ≥ 75°C · hot-hold ≥ 63°C.</div>
-      ${Check('Opening checks (morning)',o,setO,'daily_open')}
-      ${Check('Closing checks (evening)',c,setC,'daily_close')}
-      <div class="card" style=${{padding:'12px 14px',marginBottom:10}}>
-        <b>Cooking &amp; reheating temperatures</b>
-        <div style=${{display:'flex',gap:6,flexWrap:'wrap',marginTop:8}}>
-          <select class="in" style=${{width:'auto'}} value=${tk} onChange=${e=>setTk(e.target.value)}><option value="cooking">Cooking</option><option value="reheating">Reheating</option><option value="hot_hold">Hot hold</option><option value="cold_hold">Cold hold</option></select>
-          <input class="in" style=${{flex:1,minWidth:120}} placeholder="Food item" value=${ti} onInput=${e=>setTi(e.target.value)}/>
-          <input class="in" type="number" step="0.1" style=${{width:90}} placeholder="°C" value=${tt} onInput=${e=>setTt(e.target.value)}/>
-          <button class="chip" style=${{background:C.navy,color:'#fff',borderColor:C.navy}} onClick=${addTemp}>Add</button></div>
-        <div style=${{marginTop:8}}>${temps.length===0?html`<div class="muted" style=${{fontSize:12}}>No temperatures logged yet today.</div>`:temps.map(t=>html`<div key=${t.id} style=${{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,padding:'6px 0',borderTop:'1px solid #EFECE4',fontSize:12}}>
-          <div><b>${t.item}</b> <span class="muted">· ${t.kind.replace('_',' ')} · ${t.temp_c}°C</span></div>
-          <div style=${{display:'flex',gap:6,alignItems:'center'}}>${t.pass===true?html`<span class="tag" style=${{background:'#E5EEE7',color:C.green}}>Pass</span>`:t.pass===false?html`<span class="tag" style=${{background:C.urgentSoft,color:C.urgent}}>FAIL</span>`:''}<button class="chip" style=${{padding:'2px 8px'}} onClick=${()=>delTemp(t.id)}>✕</button></div></div>`)}</div>
+    <div class="card" style=${{padding:'9px 12px',marginBottom:10,background:'#F7F4EC',border:'1px solid '+C.line,fontSize:11,color:'#2B3443'}}><b style=${{color:C.navy}}>Targets:</b> fridge 0–5°C (action &gt;8°C) · freezer ≤ −18°C · cooking/reheating core ≥ 75°C · hot-hold ≥ 63°C.</div>
+    <div class="card" style=${{padding:'12px 14px',marginBottom:10}}>
+      <b>Catering — bought-in meals</b>
+      <div class="muted" style=${{fontSize:11,marginTop:2}}>Tick a session if the meal was brought in from outside, then record what came in and its temperature.</div>
+      <div style=${{display:'flex',gap:18,flexWrap:'wrap',marginTop:8}}>
+        <label style=${{display:'flex',gap:6,alignItems:'center',fontSize:13,cursor:'pointer'}}><input type="checkbox" checked=${cateredAm} onChange=${e=>setCateredSession('catered_am',e.target.checked)}/>Morning catered</label>
+        <label style=${{display:'flex',gap:6,alignItems:'center',fontSize:13,cursor:'pointer'}}><input type="checkbox" checked=${cateredPm} onChange=${e=>setCateredSession('catered_pm',e.target.checked)}/>Afternoon / evening catered</label>
       </div>
-      <div class="card" style=${{padding:'12px 14px'}}>
-        <b>Extra checks this week</b>
-        <textarea class="in" style=${{marginTop:8,minHeight:46,fontFamily:'inherit'}} placeholder="Any extra checks performed this week…" value=${extra} onInput=${e=>setExtra(e.target.value)} onBlur=${saveExtra}></textarea>
-      </div>
-    </div>`}
+      ${(sessOpts.length||cateredTemps.length)?html`<div style=${{marginTop:10}}>
+        ${sessOpts.length?html`<div>
+        <div class="muted" style=${{fontSize:11,marginBottom:6}}>Food received (e.g. fish and chips). Hot food should be 63°C or above on delivery; cold food 8°C or below.</div>
+        <div style=${{display:'flex',gap:6,flexWrap:'wrap'}}>
+          <select class="in" style=${{width:'auto'}} value=${sessOpts.includes(cs)?cs:sessOpts[0]} onChange=${e=>setCs(e.target.value)}>${cateredAm?html`<option value="am">Morning</option>`:''}${cateredPm?html`<option value="pm">Afternoon/evening</option>`:''}</select>
+          <input class="in" style=${{flex:1,minWidth:140}} placeholder="Food item (e.g. Fish and chips)" value=${ci} onInput=${e=>setCi(e.target.value)}/>
+          <input class="in" type="number" inputmode="decimal" step="0.1" style=${{width:90}} placeholder="°C" value=${ct} onInput=${e=>setCt(e.target.value)}/>
+          <button class="chip" style=${{background:C.navy,color:'#fff',borderColor:C.navy}} onClick=${addCateredTemp}>Add</button></div></div>`:''}
+        <div style=${{marginTop:8}}>${cateredTemps.length===0?html`<div class="muted" style=${{fontSize:12}}>No catered food logged yet today.</div>`:cateredTemps.map(t=>html`<div key=${t.id} style=${{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,padding:'6px 0',borderTop:'1px solid #EFECE4',fontSize:12}}>
+          <div><b>${t.item}</b> <span class="muted">· ${t.session==='pm'?'afternoon/evening':t.session==='am'?'morning':''} · ${t.temp_c}°C</span></div>
+          <button class="chip" style=${{padding:'2px 8px'}} onClick=${()=>delTemp(t.id)}>✕</button></div>`)}</div>
+      </div>`:''}
+    </div>
+    ${Check('Opening checks (morning)',o,setO,'daily_open')}
+    ${Check('Closing checks (evening)',c,setC,'daily_close')}
+    <div class="card" style=${{padding:'12px 14px',marginBottom:10}}>
+      <b>Cooking &amp; reheating temperatures</b>
+      <div style=${{display:'flex',gap:6,flexWrap:'wrap',marginTop:8}}>
+        <select class="in" style=${{width:'auto'}} value=${tk} onChange=${e=>setTk(e.target.value)}><option value="cooking">Cooking</option><option value="reheating">Reheating</option><option value="hot_hold">Hot hold</option><option value="cold_hold">Cold hold</option></select>
+        <input class="in" style=${{flex:1,minWidth:120}} placeholder="Food item" value=${ti} onInput=${e=>setTi(e.target.value)}/>
+        <input class="in" type="number" step="0.1" style=${{width:90}} placeholder="°C" value=${tt} onInput=${e=>setTt(e.target.value)}/>
+        <button class="chip" style=${{background:C.navy,color:'#fff',borderColor:C.navy}} onClick=${addTemp}>Add</button></div>
+      <div style=${{marginTop:8}}>${cookTemps.length===0?html`<div class="muted" style=${{fontSize:12}}>No temperatures logged yet today.</div>`:cookTemps.map(t=>html`<div key=${t.id} style=${{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,padding:'6px 0',borderTop:'1px solid #EFECE4',fontSize:12}}>
+        <div><b>${t.item}</b> <span class="muted">· ${t.kind.replace('_',' ')} · ${t.temp_c}°C</span></div>
+        <div style=${{display:'flex',gap:6,alignItems:'center'}}>${t.pass===true?html`<span class="tag" style=${{background:'#E5EEE7',color:C.green}}>Pass</span>`:t.pass===false?html`<span class="tag" style=${{background:C.urgentSoft,color:C.urgent}}>FAIL</span>`:''}<button class="chip" style=${{padding:'2px 8px'}} onClick=${()=>delTemp(t.id)}>✕</button></div></div>`)}</div>
+    </div>
+    <div class="card" style=${{padding:'12px 14px'}}>
+      <b>Extra checks this week</b>
+      <textarea class="in" style=${{marginTop:8,minHeight:46,fontFamily:'inherit'}} placeholder="Any extra checks performed this week…" value=${extra} onInput=${e=>setExtra(e.target.value)} onBlur=${saveExtra}></textarea>
+    </div>
   </div>`}
 
 function KitchenCleaning({profile,fire}){
@@ -1350,14 +1384,26 @@ function KitchenCleaning({profile,fire}){
   async function markDone(id){await sb.functions.invoke('kitchen',{body:{action:'clean_toggle',task_id:id,date:kToday(),done:true}});fire('Marked done today');load()}
   async function addTask(){if(!nt.trim())return;const {data}=await sb.functions.invoke('kitchen',{body:{action:'clean_add',title:nt,frequency:freq}});if(data&&data.ok){setNt('');load()}else fire((data&&data.error)||'Error')}
   async function rm(id){if(!window.confirm('Remove this task from the schedule?'))return;await sb.functions.invoke('kitchen',{body:{action:'clean_remove',id}});load()}
+  function saveDay(){const n=(tasks||[]).filter(t=>t.done).length;const tot=(tasks||[]).length;fire('Saved — '+n+' of '+tot+' tasks ticked for '+fmt(date)+'. Added to the monthly record.')}
+  async function cleanMonthExport(){const month=date.slice(0,7);const {data}=await sb.functions.invoke('kitchen',{body:{action:'clean_month_export',month}});if(!data||!data.ok){fire('Export failed');return}
+    const dailyTasks=(data.tasks||[]).filter(t=>t.frequency==='daily');const other=(data.tasks||[]).filter(t=>t.frequency!=='daily')
+    const doneSet={};(data.log||[]).forEach(l=>{doneSet[l.task_id+'|'+l.done_date]=true})
+    const [y,m]=month.split('-').map(Number);const last=new Date(y,m,0).getDate()
+    const rows=[['Kitchen cleaning record — '+month],['Date','Day',...dailyTasks.map(t=>t.title)]]
+    for(let i=1;i<=last;i++){const dd=new Date(y,m-1,i);const iso=dd.toLocaleDateString('en-CA');const dn=dd.toLocaleDateString('en-GB',{weekday:'short'});rows.push([iso,dn,...dailyTasks.map(t=>doneSet[t.id+'|'+iso]?'✓':'')])}
+    if(other.length){rows.push([]);rows.push(['Weekly / termly deep cleans']);rows.push(['Task','Frequency','Dates completed this month'])
+      other.forEach(t=>{const ds=(data.log||[]).filter(l=>l.task_id===t.id).map(l=>l.done_date).sort();rows.push([t.title,t.frequency,ds.join(', ')])})}
+    const csv=rows.map(r=>r.map(x=>'"'+(x==null?'':x).toString().replace(/"/g,'""')+'"').join(',')).join(String.fromCharCode(10))
+    const url=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));const a=document.createElement('a');a.href=url;a.download='kitchen_cleaning_'+month+'.csv';a.click();URL.revokeObjectURL(url)}
   const fmt=d=>d?new Date(d+'T00:00:00').toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}):'—'
   return html`<div>
     <div style=${{display:'flex',gap:6,marginBottom:10,flexWrap:'wrap'}}>${[['daily','Daily'],['weekly','Weekly deep clean'],['termly','Termly deep clean']].map(([k,l])=>html`<button key=${k} class="chip ${freq===k?'on':''}" onClick=${()=>setFreq(k)}>${l}</button>`)}</div>
-    ${freq==='daily'&&html`<div style=${{marginBottom:10}}><input class="in" type="date" style=${{width:'auto'}} value=${date} onInput=${e=>setDate(e.target.value)}/></div>`}
+    ${freq==='daily'&&html`<div style=${{display:'flex',gap:6,alignItems:'center',flexWrap:'wrap',marginBottom:10}}><input class="in" type="date" style=${{width:'auto'}} value=${date} onInput=${e=>setDate(e.target.value)}/><button class="chip" onClick=${cleanMonthExport}>📄 Month CSV</button></div>`}
     ${tasks===null?html`<div class="muted">Loading…</div>`:tasks.map(t=>html`<div key=${t.id} class="card" style=${{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,padding:'9px 12px',marginBottom:6}}>
       <div style=${{minWidth:0}}><div style=${{fontSize:13}}>${t.title}</div><div class="muted" style=${{fontSize:10.5}}>${t.area||''}${freq!=='daily'?' · last done: '+fmt(t.last_done):''}</div></div>
       ${freq==='daily'?html`<label style=${{cursor:'pointer',flexShrink:0}}><input type="checkbox" checked=${!!t.done} onChange=${e=>toggle(t.id,e.target.checked)} style=${{transform:'scale(1.3)'}}/></label>`:html`<div style=${{display:'flex',gap:6,flexShrink:0}}><button class="chip" style=${{background:C.navy,color:'#fff',borderColor:C.navy}} onClick=${()=>markDone(t.id)}>Mark done</button>${isAdmin?html`<button class="chip" onClick=${()=>rm(t.id)}>✕</button>`:''}</div>`}
     </div>`)}
+    ${freq==='daily'&&tasks!==null&&html`<button class="btn" style=${{marginTop:4}} onClick=${saveDay}>Save today’s cleaning</button>`}
     ${isAdmin&&html`<div style=${{display:'flex',gap:6,marginTop:10}}><input class="in" style=${{flex:1}} placeholder=${'Add a '+freq+' task…'} value=${nt} onInput=${e=>setNt(e.target.value)}/><button class="chip" onClick=${addTask}>Add</button></div>`}
   </div>`}
 

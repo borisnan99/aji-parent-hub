@@ -55,6 +55,8 @@ Deno.serve(async (req) => {
       const date = (body.date || today).slice(0, 10);
       const row: any = { log_date: date, updated_at: new Date().toISOString() };
       if (body.catered !== undefined) row.catered = body.catered === true;
+      if (body.catered_am !== undefined) row.catered_am = body.catered_am === true;
+      if (body.catered_pm !== undefined) row.catered_pm = body.catered_pm === true;
       if (body.extra_checks !== undefined) row.extra_checks = (body.extra_checks || "").trim() || null;
       const { error } = await svc.from("kitchen_daily").upsert(row, { onConflict: "log_date" });
       if (error) return json({ error: error.message }, 500);
@@ -65,7 +67,8 @@ Deno.serve(async (req) => {
       const kind = body.kind || "cooking";
       const t = Number(body.temp);
       if (!body.item || isNaN(t)) return json({ error: "item and temperature are required" }, 400);
-      const { data, error } = await svc.from("kitchen_temps").insert({ log_date: date, kind, item: (body.item || "").trim(), temp_c: t, pass: passFor(kind, t), taken_by: user.id, notes: (body.notes || "").trim() || null }).select().single();
+      const session = (body.session === "am" || body.session === "pm") ? body.session : null;
+      const { data, error } = await svc.from("kitchen_temps").insert({ log_date: date, kind, item: (body.item || "").trim(), temp_c: t, pass: passFor(kind, t), session, taken_by: user.id, notes: (body.notes || "").trim() || null }).select().single();
       if (error) return json({ error: error.message }, 500);
       return json({ ok: true, id: data.id });
     }
@@ -169,6 +172,24 @@ Deno.serve(async (req) => {
       const { data } = await svc.from("kitchen_incidents").select("*").order("incident_date", { ascending: false }).limit(100);
       const nm2 = await nameMap((data ?? []).map((r: any) => r.logged_by));
       return json({ ok: true, rows: (data ?? []).map((r: any) => ({ ...r, logged_by_name: nm2[r.logged_by] || "" })) });
+    }
+
+    // ---- CLEANING MONTH EXPORT ----
+    if (action === "clean_month_export") {
+      const month = (body.month || today.slice(0, 7)).slice(0, 7);
+      const from = month + "-01";
+      const d = new Date(from + "T00:00:00Z");
+      const to = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).toISOString().slice(0, 10);
+      const { data: tasks } = await svc.from("kitchen_clean_tasks").select("id,title,frequency,area,sort").eq("is_active", true).order("frequency").order("sort");
+      const ids = (tasks ?? []).map((t: any) => t.id);
+      let log: any[] = [];
+      if (ids.length) {
+        const { data } = await svc.from("kitchen_clean_log").select("task_id,done_date,done_by").gte("done_date", from).lte("done_date", to).in("task_id", ids);
+        log = data ?? [];
+      }
+      const nm2 = await nameMap(log.map((l: any) => l.done_by));
+      const logOut = log.map((l: any) => ({ ...l, done_by_name: nm2[l.done_by] || "" }));
+      return json({ ok: true, month, tasks: tasks ?? [], log: logOut });
     }
 
     // ---- MONTH EXPORT (daily diary + temps) ----
