@@ -364,19 +364,26 @@ function PraiseGrid({assignment,period,onBack}){
     ${toast&&html`<div style=${{position:'fixed',left:'50%',bottom:24,transform:'translateX(-50%)',background:'#0E1D38',color:'#fff',padding:'10px 16px',borderRadius:999,fontSize:14}}>${toast}</div>`}
   </div>`}
 
-function PraiseEntry(){
+function PraiseEntry({canProxy}){
   const [cols,setCols]=useState(null);const [sel,setSel]=useState(null)
+  const [teachers,setTeachers]=useState([]);const [forT,setForT]=useState('')
   const period=new Date().toISOString().slice(0,7)
-  async function load(){const {data}=await sb.functions.invoke('praise-entry',{body:{action:'my_columns',period}});setCols((data&&data.columns)||[])}
-  useEffect(()=>{load()},[])
-  if(cols===null)return html`<div class="muted">Loading your classes…</div>`
-  if(sel)return html`<${PraiseGrid} assignment=${sel} period=${period} onBack=${()=>{setSel(null);load()}}/>`
-  if(!cols.length)return html`<div class="card muted" style=${{padding:16}}>You have no praise columns yet. The office can assign them in Praise → Setup.</div>`
+  async function load(){setCols(null);const body={action:'my_columns',period};if(canProxy&&forT)body.teacher_id=forT;const {data}=await sb.functions.invoke('praise-entry',{body});setCols((data&&data.columns)||[])}
+  async function loadTeachers(){if(!canProxy)return;const {data}=await sb.functions.invoke('praise-admin',{body:{action:'list'}});if(data&&data.ok)setTeachers(data.teachers||[])}
+  useEffect(()=>{loadTeachers()},[])
+  useEffect(()=>{setSel(null);load()},[forT])
   const monthLbl=new Date(period+'-01T00:00:00').toLocaleDateString('en-GB',{month:'long',year:'numeric'})
+  const picker=canProxy?html`<div class="card" style=${{padding:'10px 12px',marginBottom:10,background:'#F3EFE6'}}>
+    <div class="lbl" style=${{marginBottom:4}}>Fill in for</div>
+    <select class="in" style=${{marginTop:0}} value=${forT} onChange=${e=>setForT(e.target.value)}><option value="">Myself (my own classes)</option>${teachers.map(t=>html`<option key=${t.id} value=${t.id}>${t.full_name}</option>`)}</select>
+    ${forT?html`<div class="muted" style=${{fontSize:11,marginTop:6}}>You are entering points on this teacher's behalf. They save under that teacher's columns.</div>`:''}
+  </div>`:''
+  if(sel)return html`<div>${picker}<${PraiseGrid} assignment=${sel} period=${period} onBack=${()=>{setSel(null);load()}}/></div>`
   return html`<div>
     <h2 class="serif" style=${{color:C.navy,marginTop:4}}>Praise points</h2>
     <p class="muted" style=${{fontSize:12,marginTop:0}}>Scoring for <b>${monthLbl}</b>. Tap a class to fill in — each pupil out of 10.</p>
-    ${cols.map(c=>{const full=c.total>0&&c.filled>=c.total;return html`<div key=${c.id} class="card" style=${{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'12px 14px',marginBottom:8,cursor:'pointer'}} onClick=${()=>setSel(c)}>
+    ${picker}
+    ${cols===null?html`<div class="muted">Loading classes…</div>`:cols.length===0?html`<div class="card muted" style=${{padding:16}}>${canProxy&&forT?'This teacher has no praise columns.':'You have no praise columns yet. The office can assign them in Praise → Setup.'}</div>`:cols.map(c=>{const full=c.total>0&&c.filled>=c.total;return html`<div key=${c.id} class="card" style=${{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'12px 14px',marginBottom:8,cursor:'pointer'}} onClick=${()=>setSel(c)}>
       <div><b>${c.group_value}</b><div class="muted" style=${{fontSize:11}}>${c.context==='school'?'School':'Madrasah'}</div></div>
       <span class="tag" style=${{background:full?'#E5EEE7':'#FBECC9',color:full?C.green:'#8A6D1B',padding:'5px 11px',fontWeight:700}}>${c.filled}/${c.total}</span></div>`})}
   </div>`}
@@ -432,7 +439,7 @@ function Praise({profile,canManage}){
   const tabs=[['entry','✏️ Enter points'],...(canSetup?[['setup','⚙️ Setup columns'],['progress','✅ Who\'s done']]:[]),...(canCollate?[['collation','📊 Collation']]:[])]
   return html`<div>
     ${tabs.length>1&&html`<div style=${{display:'flex',gap:8,marginBottom:12,flexWrap:'wrap'}}>${tabs.map(([k,l])=>html`<button key=${k} class="chip ${mode===k?'on':''}" style=${{flex:'1 1 auto'}} onClick=${()=>setMode(k)}>${l}</button>`)}</div>`}
-    ${mode==='setup'&&canSetup?html`<${PraiseSetup}/>`:mode==='progress'&&canSetup?html`<${PraiseProgress}/>`:mode==='collation'&&canCollate?html`<${PraiseCollation}/>`:html`<${PraiseEntry}/>`}
+    ${mode==='setup'&&canSetup?html`<${PraiseSetup}/>`:mode==='progress'&&canSetup?html`<${PraiseProgress}/>`:mode==='collation'&&canCollate?html`<${PraiseCollation}/>`:html`<${PraiseEntry} canProxy=${canManage||isLead}/>`}
   </div>`}
 
 function PraiseProgress(){

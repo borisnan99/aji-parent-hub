@@ -39,15 +39,20 @@ Deno.serve(async (req) => {
       const { data: asg } = await svc.from("praise_assignments").select("id,teacher_id,context,group_kind,group_value,label").eq("active", true);
       const { data: staff } = await svc.from("profiles").select("id,full_name").in("role", ["staff", "admin"]);
       const tmap: Record<string, string> = {}; (staff ?? []).forEach((s: any) => (tmap[s.id] = s.full_name));
+      const EX_YEARS = ["Post-16", "Over-18"]; // praise points are for school-year pupils only
       async function totalFor(a: any): Promise<number> {
         if (a.group_kind === "academic_year") {
+          if (EX_YEARS.includes(a.group_value)) return 0;
           const { count } = await svc.from("pupils").select("id", { count: "exact", head: true }).eq("is_active", true).eq("academic_year", a.group_value);
           return count ?? 0;
         }
         const { data: cls } = await svc.from("classes").select("id").eq("phase", "morning").eq("name", a.group_value).maybeSingle();
         if (!cls) return 0;
-        const { count } = await svc.from("class_enrolments").select("pupil_id", { count: "exact", head: true }).eq("class_id", cls.id);
-        return count ?? 0;
+        const { data: en } = await svc.from("class_enrolments").select("pupil_id").eq("class_id", cls.id);
+        const ids = (en ?? []).map((e: any) => e.pupil_id);
+        if (!ids.length) return 0;
+        const { data: ps } = await svc.from("pupils").select("academic_year").eq("is_active", true).in("id", ids);
+        return (ps ?? []).filter((p: any) => !EX_YEARS.includes(p.academic_year)).length;
       }
       const cols: any[] = [];
       for (const a of asg ?? []) {
