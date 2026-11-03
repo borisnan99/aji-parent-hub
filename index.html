@@ -365,23 +365,25 @@ function PraiseGrid({assignment,period,onBack}){
   </div>`}
 
 function PraiseEntry({canProxy}){
+  const curP=new Date().toISOString().slice(0,7)
   const [cols,setCols]=useState(null);const [sel,setSel]=useState(null)
-  const [teachers,setTeachers]=useState([]);const [forT,setForT]=useState('')
-  const period=new Date().toISOString().slice(0,7)
+  const [teachers,setTeachers]=useState([]);const [forT,setForT]=useState('');const [period,setPeriod]=useState(curP)
   async function load(){setCols(null);const body={action:'my_columns',period};if(canProxy&&forT)body.teacher_id=forT;const {data}=await sb.functions.invoke('praise-entry',{body});setCols((data&&data.columns)||[])}
   async function loadTeachers(){if(!canProxy)return;const {data}=await sb.functions.invoke('praise-admin',{body:{action:'list'}});if(data&&data.ok)setTeachers(data.teachers||[])}
   useEffect(()=>{loadTeachers()},[])
-  useEffect(()=>{setSel(null);load()},[forT])
+  useEffect(()=>{setSel(null);load()},[forT,period])
   const monthLbl=new Date(period+'-01T00:00:00').toLocaleDateString('en-GB',{month:'long',year:'numeric'})
+  const monthPicker=html`<div style=${{display:'flex',gap:8,alignItems:'center',marginBottom:10,flexWrap:'wrap'}}><span class="lbl" style=${{margin:0}}>Month</span><input class="in" type="month" style=${{width:'auto',marginTop:0}} max=${curP} value=${period} onInput=${e=>{if(e.target.value)setPeriod(e.target.value)}}/>${period!==curP?html`<button class="chip" onClick=${()=>setPeriod(curP)}>This month</button>`:''}</div>`
   const picker=canProxy?html`<div class="card" style=${{padding:'10px 12px',marginBottom:10,background:'#F3EFE6'}}>
     <div class="lbl" style=${{marginBottom:4}}>Fill in for</div>
     <select class="in" style=${{marginTop:0}} value=${forT} onChange=${e=>setForT(e.target.value)}><option value="">Myself (my own classes)</option>${teachers.map(t=>html`<option key=${t.id} value=${t.id}>${t.full_name}</option>`)}</select>
     ${forT?html`<div class="muted" style=${{fontSize:11,marginTop:6}}>You are entering points on this teacher's behalf. They save under that teacher's columns.</div>`:''}
   </div>`:''
-  if(sel)return html`<div>${picker}<${PraiseGrid} assignment=${sel} period=${period} onBack=${()=>{setSel(null);load()}}/></div>`
+  if(sel)return html`<div>${monthPicker}${picker}<${PraiseGrid} assignment=${sel} period=${period} onBack=${()=>{setSel(null);load()}}/></div>`
   return html`<div>
     <h2 class="serif" style=${{color:C.navy,marginTop:4}}>Praise points</h2>
-    <p class="muted" style=${{fontSize:12,marginTop:0}}>Scoring for <b>${monthLbl}</b>. Tap a class to fill in — each pupil out of 10.</p>
+    <p class="muted" style=${{fontSize:12,marginTop:0}}>Scoring for <b>${monthLbl}</b>. Tap a class to fill in — each pupil out of 10. Pick a month to catch up on a previous one.</p>
+    ${monthPicker}
     ${picker}
     ${cols===null?html`<div class="muted">Loading classes…</div>`:cols.length===0?html`<div class="card muted" style=${{padding:16}}>${canProxy&&forT?'This teacher has no praise columns.':'You have no praise columns yet. The office can assign them in Praise → Setup.'}</div>`:cols.map(c=>{const full=c.total>0&&c.filled>=c.total;return html`<div key=${c.id} class="card" style=${{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'12px 14px',marginBottom:8,cursor:'pointer'}} onClick=${()=>setSel(c)}>
       <div><b>${c.group_value}</b><div class="muted" style=${{fontSize:11}}>${c.context==='school'?'School':'Madrasah'}</div></div>
