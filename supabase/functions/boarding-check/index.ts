@@ -43,10 +43,10 @@ Deno.serve(async (req) => {
     const asUser = createClient(url, Deno.env.get("SUPABASE_ANON_KEY")!, { db: { schema: "parent_hub" }, global: { headers: { Authorization: req.headers.get("Authorization") ?? "" } } });
     const { data: { user } } = await asUser.auth.getUser();
     if (!user) return json({ error: "not signed in" }, 401);
-    const { data: me } = await svc.from("profiles").select("role,email,full_name").eq("id", user.id).single();
+    const { data: me } = await svc.from("profiles").select("role,email,full_name,roles").eq("id", user.id).single();
     const isAdmin = me?.role === "admin";
     const nm = (me?.full_name || "").trim().toLowerCase(), em = (me?.email || "").toLowerCase();
-    const canCheck = !!me && (isAdmin || CHECK_NAMES.includes(nm) || CHECK_EMAILS.includes(em));
+    const canCheck = !!me && (isAdmin || (me?.roles || []).includes("boarding") || CHECK_NAMES.includes(nm) || CHECK_EMAILS.includes(em));
     const canResolve = !!me && (isAdmin || em === GULFAM_EMAIL);
     if (!canCheck) return json({ error: "not permitted" }, 403);
 

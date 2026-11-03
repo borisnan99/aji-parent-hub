@@ -501,7 +501,7 @@ function PraiseSetup(){
 
 const BODY_AREAS=['Head','Face','Eye','Nose','Mouth / Teeth','Neck','Shoulder','Arm','Elbow','Wrist','Left hand','Right hand','Hand','Finger','Chest','Stomach','Back','Hip','Leg','Left leg','Right leg','Knee','Ankle','Left foot','Right foot','Foot','Other']
 const INCIDENT_STAFF={names:['luqman amla','mohammed atcha','gulfam khan','imteyaz omarji','yasin patel'],emails:['imteyaz.omarji@boltondarululoom.org.uk','yasin.patel@boltondarululoom.org.uk']}
-function canReportIncident(p){if(!p)return false;if(p.role==='admin')return true;const nm=(p.full_name||'').trim().toLowerCase(),em=(p.email||'').toLowerCase();return INCIDENT_STAFF.names.includes(nm)||INCIDENT_STAFF.emails.includes(em)}
+function canReportIncident(p){if(!p)return false;if(p.role==='admin')return true;const nm=(p.full_name||'').trim().toLowerCase(),em=(p.email||'').toLowerCase();return (p.roles||[]).includes('incidents')||INCIDENT_STAFF.names.includes(nm)||INCIDENT_STAFF.emails.includes(em)}
 
 function Incidents({profile}){
   const [pupils,setPupils]=useState(null);const [q,setQ]=useState('');const [sel,setSel]=useState(null)
@@ -555,12 +555,12 @@ function Incidents({profile}){
   </div>`}
 
 const BOARDING_STAFF={names:['ihsaanul haque','gulfam khan'],emails:['ihsaanul.haque@boltondarululoom.org.uk','gulfam.khan@boltondarululoom.org.uk']}
-function canBoardingCheck(p){if(!p)return false;if(p.role==='admin')return true;const nm=(p.full_name||'').trim().toLowerCase(),em=(p.email||'').toLowerCase();return BOARDING_STAFF.names.includes(nm)||BOARDING_STAFF.emails.includes(em)}
+function canBoardingCheck(p){if(!p)return false;if(p.role==='admin')return true;const nm=(p.full_name||'').trim().toLowerCase(),em=(p.email||'').toLowerCase();return (p.roles||[]).includes('boarding')||BOARDING_STAFF.names.includes(nm)||BOARDING_STAFF.emails.includes(em)}
 const BOARD_FABRIC=[['carpet_ok','Carpets'],['light_ok','Lights'],['switch_ok','Switches'],['radiator_ok','Radiators'],['window_ok','Windows'],['restrictor_ok','Window restrictors']]
 const DOW_NAMES=['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday']
 const DAMAGE_ITEMS=['Cupboard','Bin','Window restrictor','Door handle','Socket','Lock','Cupboard latch / hinge','Wall','Fire door closer','Light fitting','Bed frame','Mattress','Other']
 const DAMAGE_REPORTERS=['Ihsaanul Haque','Gulfam Khan','Zubair Patel','Yasin Patel']
-function canBoardingDamage(p){if(!p)return false;if(p.role==='admin')return true;const nm=(p.full_name||'').trim().toLowerCase(),em=(p.email||'').toLowerCase();return ['ihsaanul haque','gulfam khan','zubair patel','yasin patel'].includes(nm)||['ihsaanul.haque@boltondarululoom.org.uk','gulfam.khan@boltondarululoom.org.uk','zubair.patel@boltondarululoom.org.uk','yasin.patel@boltondarululoom.org.uk'].includes(em)}
+function canBoardingDamage(p){if(!p)return false;if(p.role==='admin')return true;const nm=(p.full_name||'').trim().toLowerCase(),em=(p.email||'').toLowerCase();return (p.roles||[]).includes('boarding')||['ihsaanul haque','gulfam khan','zubair patel','yasin patel'].includes(nm)||['ihsaanul.haque@boltondarululoom.org.uk','gulfam.khan@boltondarululoom.org.uk','zubair.patel@boltondarululoom.org.uk','yasin.patel@boltondarululoom.org.uk'].includes(em)}
 const bFmtD=d=>new Date(d+'T00:00:00').toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'})
 const bEsc=s=>(s==null?'':String(s)).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
 
@@ -866,7 +866,7 @@ function BoardingDamage({profile,fire}){
   </div>`}
 
 const BEHAVIOUR_PERIODS=['1st','2nd','3rd','4th','Other / outside lesson']
-function canReviewBehaviour(p){if(!p)return false;if(p.role==='admin')return true;const em=(p.email||'').toLowerCase(),nm=(p.full_name||'').trim().toLowerCase();return em==='yasin.patel@boltondarululoom.org.uk'||nm==='yasin patel'}
+function canReviewBehaviour(p){if(!p)return false;if(p.role==='admin')return true;const em=(p.email||'').toLowerCase(),nm=(p.full_name||'').trim().toLowerCase();return (p.roles||[]).includes('behaviour')||em==='yasin.patel@boltondarululoom.org.uk'||nm==='yasin patel'}
 
 function Behaviour({profile}){
   const [codes,setCodes]=useState([]);const [mine,setMine]=useState([]);const [queue,setQueue]=useState([]);const [history,setHistory]=useState([]);const [canReview,setCanReview]=useState(false)
@@ -983,7 +983,7 @@ function Behaviour({profile}){
 
 const SUP_ROOM_CHECKS=['Cleanliness','Window Sills','Lights','Storage Units','Beddings','Sockets','Showers and Toilets','Fire Extinguishers','Emergency Lights','Fire Escape Routes','Students settled in their rooms by lights out','Corridors and fire exits clear']
 const SUP_SUPERVISORS=['Zubair Patel','Gulfam Khan','Yasin Patel','Ihsaanul Haque','Omar Sher','Luqman Amla']
-function canSupervisor(p){if(!p)return false;if(p.role==='admin')return true;const em=(p.email||'').toLowerCase(),nm=(p.full_name||'').trim().toLowerCase();return ['gulfam khan','zubair patel'].includes(nm)||['gulfam.khan@boltondarululoom.org.uk','zubair.patel@boltondarululoom.org.uk'].includes(em)}
+function canSupervisor(p){if(!p)return false;if(p.role==='admin')return true;const em=(p.email||'').toLowerCase(),nm=(p.full_name||'').trim().toLowerCase();return (p.roles||[]).includes('supervisor')||['gulfam khan','zubair patel'].includes(nm)||['gulfam.khan@boltondarululoom.org.uk','zubair.patel@boltondarululoom.org.uk'].includes(em)}
 
 function Supervisor({profile}){
   const today=new Date().toISOString().slice(0,10)
@@ -1047,7 +1047,7 @@ function Supervisor({profile}){
   </div>`}
 
 const BOARD_TEAM_NAMES=['gulfam khan','zubair patel','yasin patel','ihsaanul haque','omar sher']
-function canBoardTeam(p){if(!p)return false;if(p.role==='admin')return true;return BOARD_TEAM_NAMES.includes((p.full_name||'').trim().toLowerCase())}
+function canBoardTeam(p){if(!p)return false;if(p.role==='admin')return true;if((p.roles||[]).includes('medical'))return true;return BOARD_TEAM_NAMES.includes((p.full_name||'').trim().toLowerCase())}
 const SAFE_CATEGORIES=['Welfare / wellbeing','Physical','Emotional','Neglect','Online / e-safety','Peer-on-peer','Behaviour / risk','Other']
 
 function Safeguarding({profile}){
@@ -1226,7 +1226,7 @@ function Medical({profile}){
     ${toast&&html`<div style=${{position:'fixed',left:'50%',bottom:24,transform:'translateX(-50%)',background:'#0E1D38',color:'#fff',padding:'10px 16px',borderRadius:999,fontSize:14,maxWidth:'90%',textAlign:'center'}}>${toast}</div>`}
   </div>`}
 
-function canKitchen(p){if(!p)return false;if(p.role==='admin')return true;return ['kulsum'].some(k=>(p.full_name||'').toLowerCase().includes(k))}
+function canKitchen(p){if(!p)return false;if(p.role==='admin')return true;if((p.roles||[]).includes('kitchen'))return true;return ['kulsum'].some(k=>(p.full_name||'').toLowerCase().includes(k))}
 const kToday=()=>new Date().toLocaleDateString('en-CA')
 function fridgeTag(n){if(n==null||n==='')return null;n=Number(n);return n>8?{bg:C.urgentSoft,fg:C.urgent,l:'Over 8°C — action'}:n>5?{bg:'#FBECC9',fg:'#8A6D1B',l:'Slightly high'}:{bg:'#E5EEE7',fg:C.green,l:'OK ≤5°C'}}
 function freezerTag(n){if(n==null||n==='')return null;n=Number(n);return n>-15?{bg:C.urgentSoft,fg:C.urgent,l:'Too warm — action'}:n>-18?{bg:'#FBECC9',fg:'#8A6D1B',l:'Slightly high'}:{bg:'#E5EEE7',fg:C.green,l:'OK ≤−18°C'}}
@@ -2091,12 +2091,17 @@ function Detentions({profile}){
     ${toast&&html`<div style=${{position:'fixed',left:'50%',bottom:24,transform:'translateX(-50%)',background:'#0E1D38',color:'#fff',padding:'10px 16px',borderRadius:999,fontSize:14,maxWidth:'90%',textAlign:'center'}}>${toast}</div>`}
   </div>`}
 
+const STAFF_ROLE_DEFS=[['kitchen','Kitchen'],['behaviour','Behaviour'],['boarding','Boarding'],['medical','Medical & fire drills'],['supervisor','Supervisor'],['incidents','Injuries / incidents']]
+const roleLabel=s=>{const f=STAFF_ROLE_DEFS.find(r=>r[0]===s);return f?f[1]:s}
 function Users({profile}){
   const [me,setMe]=useState('')
   const [staff,setStaff]=useState(null)
   const [q,setQ]=useState('');const [results,setResults]=useState(null);const [searching,setSearching]=useState(false)
   const [busy,setBusy]=useState('');const [toast,setToast]=useState('')
-  const fire=m=>{setToast(m);setTimeout(()=>setToast(''),3600)}
+  const [showAdd,setShowAdd]=useState(false);const [creating,setCreating]=useState(false)
+  const [nf,setNf]=useState({full_name:'',email:'',password:'',role:'staff',roles:[]})
+  const [editId,setEditId]=useState(null);const [ed,setEd]=useState(null);const [pw,setPw]=useState('')
+  const fire=m=>{setToast(m);setTimeout(()=>setToast(''),3800)}
   async function load(){const {data,error}=await sb.functions.invoke('user-admin',{body:{action:'list'}});if(error||(data&&data.error)){fire((data&&data.error)||'Error loading');setStaff([]);return}setStaff(data.users||[]);setMe(data.me||'')}
   useEffect(()=>{load()},[])
   async function search(){const term=q.trim();if(term.length<2){setResults(null);return}setSearching(true);const {data}=await sb.functions.invoke('user-admin',{body:{action:'search',q:term}});setSearching(false);setResults((data&&data.users)||[])}
@@ -2105,21 +2110,75 @@ function Users({profile}){
     setBusy(u.id);const {data,error}=await sb.functions.invoke('user-admin',{body:{action:'set_active',user_id:u.id,active}});setBusy('')
     if(error||(data&&data.error)){fire((data&&data.error)||'Error');return}
     fire((active?'Access restored for ':'Access removed for ')+u.full_name);load();if(results)search()}
+  function toggleNewRole(s){setNf(f=>({...f,roles:f.roles.includes(s)?f.roles.filter(x=>x!==s):[...f.roles,s]}))}
+  function toggleEdRole(s){setEd(e=>({...e,roles:e.roles.includes(s)?e.roles.filter(x=>x!==s):[...e.roles,s]}))}
+  async function createUser(){
+    if(!nf.full_name.trim()){fire('Enter a name');return}
+    if(!nf.email.includes('@')){fire('Enter a valid email');return}
+    if(nf.password.length<8){fire('Password must be at least 8 characters');return}
+    setCreating(true)
+    const {data,error}=await sb.functions.invoke('user-admin',{body:{action:'create_user',full_name:nf.full_name,email:nf.email,password:nf.password,role:nf.role,roles:nf.roles}})
+    setCreating(false)
+    if(error||(data&&data.error)){fire((data&&data.error)||'Error');return}
+    fire('Account created for '+nf.full_name.trim());setNf({full_name:'',email:'',password:'',role:'staff',roles:[]});setShowAdd(false);load()}
+  function openEdit(u){if(editId===u.id){setEditId(null);return}setEditId(u.id);setEd({full_name:u.full_name||'',email:u.email||'',role:u.role,roles:[...(u.roles||[])]});setPw('')}
+  async function saveAccess(u){setBusy('save-'+u.id)
+    try{
+      if(ed.role!==u.role){const {data,error}=await sb.functions.invoke('user-admin',{body:{action:'set_role',user_id:u.id,role:ed.role}});if(error||(data&&data.error))throw new Error((data&&data.error)||error.message)}
+      {const {data,error}=await sb.functions.invoke('user-admin',{body:{action:'set_roles',user_id:u.id,roles:ed.roles}});if(error||(data&&data.error))throw new Error((data&&data.error)||error.message)}
+      if(ed.full_name.trim()!==(u.full_name||'')||ed.email.trim().toLowerCase()!==(u.email||'').toLowerCase()){const {data,error}=await sb.functions.invoke('user-admin',{body:{action:'update_user',user_id:u.id,full_name:ed.full_name,email:ed.email}});if(error||(data&&data.error))throw new Error((data&&data.error)||error.message)}
+      fire('Access updated for '+ed.full_name.trim());setEditId(null);load()
+    }catch(e){fire((e&&e.message)||'Error')}
+    setBusy('')}
+  async function resetPw(u){if(pw.length<8){fire('Password must be at least 8 characters');return}setBusy('pw-'+u.id)
+    const {data,error}=await sb.functions.invoke('user-admin',{body:{action:'set_password',user_id:u.id,password:pw}});setBusy('')
+    if(error||(data&&data.error)){fire((data&&data.error)||'Error');return}fire('New password set for '+u.full_name);setPw('')}
   const fmtLast=d=>d?new Date(d).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}):'never signed in'
   const roleTag=r=>html`<span class="tag" style=${{background:r==='admin'?C.navy:'#EEF',color:r==='admin'?'#fff':C.navy,fontSize:10}}>${r==='admin'?'Admin':'Staff'}</span>`
+  const accessSummary=u=>u.role==='admin'?'All areas (admin)':((u.roles||[]).length?(u.roles||[]).map(roleLabel).join(', '):'No extra areas yet')
+  const roleChecks=(sel,toggle)=>html`<div style=${{display:'flex',flexWrap:'wrap',gap:8,marginTop:6}}>${STAFF_ROLE_DEFS.map(([s,l])=>html`<label key=${s} style=${{display:'flex',gap:5,alignItems:'center',fontSize:12,cursor:'pointer',border:'1px solid '+C.line,borderRadius:8,padding:'4px 8px'}}><input type="checkbox" checked=${sel.includes(s)} onChange=${()=>toggle(s)}/>${l}</label>`)}</div>`
   const row=u=>html`<div key=${u.id} class="card" style=${{padding:'10px 12px',marginBottom:6}}>
-    <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8}}>
-      <div><b>${u.full_name}</b> ${u.role!=='parent'?roleTag(u.role):html`<span class="tag" style=${{background:'#EFE9DC',color:C.muted,fontSize:10}}>Parent</span>`}${u.id===me?html`<span class="muted" style=${{fontSize:11}}> · you</span>`:''}
+    <div style=${{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:8}}>
+      <div style=${{minWidth:0}}><b>${u.full_name}</b> ${u.role!=='parent'?roleTag(u.role):html`<span class="tag" style=${{background:'#EFE9DC',color:C.muted,fontSize:10}}>Parent</span>`}${u.id===me?html`<span class="muted" style=${{fontSize:11}}> · you</span>`:''}
         <div class="muted" style=${{fontSize:11,marginTop:2}}>${u.email||''}</div>
+        ${u.role!=='parent'?html`<div class="muted" style=${{fontSize:11}}>Access: ${accessSummary(u)}</div>`:''}
         <div class="muted" style=${{fontSize:11}}>${u.is_active?('Last sign-in: '+fmtLast(u.last_sign_in)):'Access removed'}</div></div>
-      <div>${u.is_active
-        ?(u.id===me?html`<span class="muted" style=${{fontSize:11}}>—</span>`:html`<button class="chip" style=${{color:C.urgent}} disabled=${busy===u.id} onClick=${()=>setActive(u,false)}>${busy===u.id?'…':'Remove access'}</button>`)
-        :html`<button class="chip" style=${{color:C.green}} disabled=${busy===u.id} onClick=${()=>setActive(u,true)}>${busy===u.id?'…':'Restore access'}</button>`}</div>
+      <div style=${{display:'flex',flexDirection:'column',gap:4,flexShrink:0,alignItems:'flex-end'}}>
+        ${u.role!=='parent'?html`<button class="chip" onClick=${()=>openEdit(u)}>${editId===u.id?'Close':'Edit access'}</button>`:''}
+        ${u.is_active
+          ?(u.id===me?html`<span class="muted" style=${{fontSize:11}}>—</span>`:html`<button class="chip" style=${{color:C.urgent}} disabled=${busy===u.id} onClick=${()=>setActive(u,false)}>${busy===u.id?'…':'Remove access'}</button>`)
+          :html`<button class="chip" style=${{color:C.green}} disabled=${busy===u.id} onClick=${()=>setActive(u,true)}>${busy===u.id?'…':'Restore access'}</button>`}</div>
     </div>
+    ${editId===u.id&&ed?html`<div style=${{marginTop:10,paddingTop:10,borderTop:'1px solid '+C.line}}>
+      <div style=${{display:'flex',gap:8,flexWrap:'wrap'}}>
+        <div style=${{flex:1,minWidth:160}}><div class="lbl">Name</div><input class="in" style=${{marginTop:0}} value=${ed.full_name} onInput=${e=>setEd({...ed,full_name:e.target.value})}/></div>
+        <div style=${{flex:1,minWidth:160}}><div class="lbl">Email (their login)</div><input class="in" style=${{marginTop:0}} value=${ed.email} onInput=${e=>setEd({...ed,email:e.target.value})}/></div>
+      </div>
+      <label style=${{display:'flex',gap:6,alignItems:'center',fontSize:13,marginTop:10,cursor:'pointer'}}><input type="checkbox" checked=${ed.role==='admin'} disabled=${u.id===me} onChange=${e=>setEd({...ed,role:e.target.checked?'admin':'staff'})}/><b>Full admin access</b> <span class="muted" style=${{fontSize:11}}>${u.id===me?'(you can’t change your own role)':'(can see and manage everything)'}</span></label>
+      <div class="lbl" style=${{marginTop:10}}>Areas they can access</div>
+      ${ed.role==='admin'?html`<div class="muted" style=${{fontSize:12,marginTop:4}}>Admins already have every area.</div>`:roleChecks(ed.roles,toggleEdRole)}
+      <button class="btn" style=${{marginTop:12}} disabled=${busy==='save-'+u.id} onClick=${()=>saveAccess(u)}>${busy==='save-'+u.id?'Saving…':'Save access'}</button>
+      <div class="lbl" style=${{marginTop:14}}>Set a new password</div>
+      <div style=${{display:'flex',gap:8}}><input class="in" style=${{marginTop:0}} placeholder="At least 8 characters" value=${pw} onInput=${e=>setPw(e.target.value)}/><button class="chip" disabled=${busy==='pw-'+u.id} onClick=${()=>resetPw(u)}>${busy==='pw-'+u.id?'…':'Set password'}</button></div>
+      <div class="muted" style=${{fontSize:11,marginTop:6}}>Changes to someone’s access apply the next time they open or refresh the app.</div>
+    </div>`:''}
   </div>`
   return html`<div>
     <h2 class="serif" style=${{color:C.navy,marginTop:4}}>Users & access</h2>
-    <p class="muted" style=${{fontSize:12,marginTop:0,lineHeight:1.5}}>Remove access when someone no longer needs it — they're signed out and can't log in, but everything they recorded stays attributed to them, and you can restore access any time. Accounts aren't deleted, so safeguarding and audit history stays intact.</p>
+    <p class="muted" style=${{fontSize:12,marginTop:0,lineHeight:1.5}}>Add staff, set their login and password, and tick which areas they can use. Make someone a full admin, or give only the areas they need. Removing access signs a person out but keeps everything they recorded — nothing is deleted.</p>
+    <button class="btn" style=${{marginBottom:12}} onClick=${()=>setShowAdd(!showAdd)}>${showAdd?'Close':'＋ Add a staff member'}</button>
+    ${showAdd&&html`<div class="card" style=${{padding:14,marginBottom:12,border:'1px solid '+C.gold}}>
+      <b class="serif" style=${{color:C.navy}}>New staff member</b>
+      <div style=${{display:'flex',gap:8,flexWrap:'wrap',marginTop:8}}>
+        <div style=${{flex:1,minWidth:160}}><div class="lbl">Full name</div><input class="in" style=${{marginTop:0}} placeholder="e.g. Yusuf Patel" value=${nf.full_name} onInput=${e=>setNf({...nf,full_name:e.target.value})}/></div>
+        <div style=${{flex:1,minWidth:160}}><div class="lbl">Email (their login)</div><input class="in" style=${{marginTop:0}} placeholder="name@boltondarululoom.org.uk" value=${nf.email} onInput=${e=>setNf({...nf,email:e.target.value})}/></div>
+      </div>
+      <div style=${{marginTop:8}}><div class="lbl">Password</div><input class="in" style=${{marginTop:0}} placeholder="At least 8 characters" value=${nf.password} onInput=${e=>setNf({...nf,password:e.target.value})}/><div class="muted" style=${{fontSize:11,marginTop:4}}>You set it now and give it to them; they can change it after signing in.</div></div>
+      <label style=${{display:'flex',gap:6,alignItems:'center',fontSize:13,marginTop:10,cursor:'pointer'}}><input type="checkbox" checked=${nf.role==='admin'} onChange=${e=>setNf({...nf,role:e.target.checked?'admin':'staff'})}/><b>Full admin access</b> <span class="muted" style=${{fontSize:11}}>(can see and manage everything)</span></label>
+      <div class="lbl" style=${{marginTop:10}}>Areas they can access</div>
+      ${nf.role==='admin'?html`<div class="muted" style=${{fontSize:12,marginTop:4}}>Admins already have every area.</div>`:roleChecks(nf.roles,toggleNewRole)}
+      <button class="btn" style=${{marginTop:12,background:C.green}} disabled=${creating} onClick=${createUser}>${creating?'Creating…':'Create account'}</button>
+    </div>`}
     <div class="card" style=${{padding:'10px 12px',marginBottom:12}}>
       <div class="lbl">Find a user (staff or parent)</div>
       <div style=${{display:'flex',gap:8}}><input class="in" style=${{marginTop:0}} placeholder="Search name or email…" value=${q} onInput=${e=>setQ(e.target.value)} onKeyDown=${e=>{if(e.key==='Enter')search()}}/><button class="chip" onClick=${search}>${searching?'…':'Search'}</button></div>

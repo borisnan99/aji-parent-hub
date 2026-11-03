@@ -10,6 +10,8 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 const cors = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type", "Access-Control-Allow-Methods": "POST, OPTIONS" };
 const json = (b: unknown, s = 200) => new Response(JSON.stringify(b), { status: s, headers: { ...cors, "content-type": "application/json" } });
 const BAN = "876000h"; // ~100 years — effectively blocks sign-in until restored
+const ALLOWED_ROLES = ["kitchen", "behaviour", "boarding", "medical", "supervisor", "incidents"];
+const cleanRoles = (r: unknown): string[] => Array.isArray(r) ? [...new Set(r.filter((x: any) => ALLOWED_ROLES.includes(x)))] : [];
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
@@ -37,10 +39,10 @@ Deno.serve(async (req) => {
       }
       return m;
     }
-    const fmtRow = (p: any, a?: { last: string | null; banned: boolean }) => ({ id: p.id, full_name: p.full_name, email: p.email, role: p.role, is_active: p.is_active !== false, last_sign_in: a?.last ?? null, banned: !!a?.banned });
+    const fmtRow = (p: any, a?: { last: string | null; banned: boolean }) => ({ id: p.id, full_name: p.full_name, email: p.email, role: p.role, roles: Array.isArray(p.roles) ? p.roles : [], is_active: p.is_active !== false, last_sign_in: a?.last ?? null, banned: !!a?.banned });
 
     if (action === "list") {
-      const { data: profs } = await svc.from("profiles").select("id,full_name,email,role,is_active").in("role", ["admin", "staff"]).order("full_name");
+      const { data: profs } = await svc.from("profiles").select("id,full_name,email,role,roles,is_active").in("role", ["admin", "staff"]).order("full_name");
       const am = await authMap();
       return json({ ok: true, me: user.id, users: (profs ?? []).map((p: any) => fmtRow(p, am[p.id])) });
     }
@@ -49,7 +51,7 @@ Deno.serve(async (req) => {
       const q = (body.q || "").trim();
       if (q.length < 2) return json({ ok: true, users: [] });
       const like = `%${q}%`;
-      const { data: profs } = await svc.from("profiles").select("id,full_name,email,role,is_active").or(`full_name.ilike.${like},email.ilike.${like}`).order("full_name").limit(25);
+      const { data: profs } = await svc.from("profiles").select("id,full_name,email,role,roles,is_active").or(`full_name.ilike.${like},email.ilike.${like}`).order("full_name").limit(25);
       const rows: any[] = [];
       for (const p of profs ?? []) {
         let a: { last: string | null; banned: boolean } | undefined;
@@ -165,6 +167,75 @@ Deno.serve(async (req) => {
       if (error) return json({ error: error.message }, 500);
       try { await svc.auth.admin.updateUserById(parent, { email, email_confirm: true }); } catch { /* parent may have no login; profiles.email is what we email */ }
       return json({ ok: true, email });
+    }
+
+    // ---- STAFF ACCOUNTS: create, roles, admin, password, profile ----
+    if (action === "create_user") {
+      const full_name = (body.full_name || "").trim();
+      const email = (body.email || "").trim().toLowerCase();
+      const password = String(body.password || "");
+      const role = body.role === "admin" ? "admin" : "staff";
+      const roles = cleanRoles(body.roles);
+      if (!full_name) return json({ error: "Enter the person's name." }, 400);
+      if (!email || !email.includes("@")) return json({ error: "Enter a valid email address." }, 400);
+      if (password.length < 8) return json({ error: "Password must be at least 8 characters." }, 400);
+      const { data: created, error: ce } = await svc.auth.admin.createUser({ email, password, email_confirm: true, user_metadata: { full_name } });
+      if (ce || !created?.user) {
+        const m = String(ce?.message || "could not create the account");
+        return json({ error: /already|exists|registered|duplicate/i.test(m) ? "An account with that email already exists." : m }, 400);
+      }
+      const uid = created.user.id;
+      // the signup trigger inserts a 'parent' profile row; promote it to the chosen staff/admin role
+      const { error: pe } = await svc.from("profiles").upsert({ id: uid, full_name, email, role, roles, is_active: true }, { onConflict: "id" });
+      if (pe) return json({ error: "Account created, but setting their role failed: " + pe.message }, 500);
+      return json({ ok: true, id: uid });
+    }
+
+    if (action === "set_roles") {
+      const target = body.user_id;
+      if (!target) return json({ error: "user_id required" }, 400);
+      const roles = cleanRoles(body.roles);
+      const { error } = await svc.from("profiles").update({ roles }).eq("id", target);
+      if (error) return json({ error: error.message }, 500);
+      return json({ ok: true, roles });
+    }
+
+    if (action === "set_role") {
+      const target = body.user_id;
+      const role = body.role === "admin" ? "admin" : "staff";
+      if (!target) return json({ error: "user_id required" }, 400);
+      if (target === user.id) return json({ error: "You can't change your own role." }, 400);
+      const { data: tgt } = await svc.from("profiles").select("role").eq("id", target).maybeSingle();
+      if (!tgt) return json({ error: "user not found" }, 404);
+      if (tgt.role === "admin" && role !== "admin") {
+        const { count } = await svc.from("profiles").select("id", { count: "exact", head: true }).eq("role", "admin").eq("is_active", true);
+        if ((count ?? 0) <= 1) return json({ error: "That's the last active admin — make someone else an admin first." }, 400);
+      }
+      const { error } = await svc.from("profiles").update({ role }).eq("id", target);
+      if (error) return json({ error: error.message }, 500);
+      return json({ ok: true, role });
+    }
+
+    if (action === "set_password") {
+      const target = body.user_id;
+      const password = String(body.password || "");
+      if (!target) return json({ error: "user_id required" }, 400);
+      if (password.length < 8) return json({ error: "Password must be at least 8 characters." }, 400);
+      try { await svc.auth.admin.updateUserById(target, { password }); } catch (e: any) { return json({ error: String(e?.message ?? e) }, 500); }
+      return json({ ok: true });
+    }
+
+    if (action === "update_user") {
+      const target = body.user_id;
+      if (!target) return json({ error: "user_id required" }, 400);
+      const upd: any = {};
+      if (body.full_name !== undefined) { const n = (body.full_name || "").trim(); if (!n) return json({ error: "Name can't be empty." }, 400); upd.full_name = n; }
+      if (body.email !== undefined) { const em = (body.email || "").trim().toLowerCase(); if (!em || !em.includes("@")) return json({ error: "Enter a valid email address." }, 400); upd.email = em; }
+      if (Object.keys(upd).length === 0) return json({ ok: true });
+      const { error } = await svc.from("profiles").update(upd).eq("id", target);
+      if (error) return json({ error: error.message }, 500);
+      if (upd.email) { try { await svc.auth.admin.updateUserById(target, { email: upd.email, email_confirm: true }); } catch { /* may be login-less */ } }
+      return json({ ok: true });
     }
 
     return json({ error: "unknown action" }, 400);

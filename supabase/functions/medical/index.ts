@@ -13,9 +13,9 @@ Deno.serve(async (req) => {
     const asUser = createClient(url, Deno.env.get("SUPABASE_ANON_KEY")!, { db: { schema: "parent_hub" }, global: { headers: { Authorization: req.headers.get("Authorization") ?? "" } } });
     const { data: { user } } = await asUser.auth.getUser();
     if (!user) return json({ error: "not signed in" }, 401);
-    const { data: me } = await svc.from("profiles").select("role,full_name").eq("id", user.id).single();
+    const { data: me } = await svc.from("profiles").select("role,full_name,roles").eq("id", user.id).single();
     const nm = (me?.full_name || "").trim().toLowerCase();
-    if (!me || !(me.role === "admin" || BOARD_TEAM.includes(nm))) return json({ error: "not permitted" }, 403);
+    if (!me || !(me.role === "admin" || (me.roles || []).includes("medical") || BOARD_TEAM.includes(nm))) return json({ error: "not permitted" }, 403);
     const body = await req.json().catch(() => ({}));
     const action = body.action || "med_list";
 

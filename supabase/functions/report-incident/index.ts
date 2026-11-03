@@ -19,8 +19,8 @@ Deno.serve(async (req) => {
     const asUser = createClient(url, Deno.env.get("SUPABASE_ANON_KEY")!, { db: { schema: "parent_hub" }, global: { headers: { Authorization: req.headers.get("Authorization") ?? "" } } });
     const { data: { user } } = await asUser.auth.getUser();
     if (!user) return json({ error: "not signed in" }, 401);
-    const { data: me } = await svc.from("profiles").select("role,email,full_name").eq("id", user.id).single();
-    const allowed = me && (me.role === "admin" || INCIDENT_NAMES.includes((me.full_name || "").trim().toLowerCase()) || INCIDENT_EMAILS.includes((me.email || "").toLowerCase()));
+    const { data: me } = await svc.from("profiles").select("role,email,full_name,roles").eq("id", user.id).single();
+    const allowed = me && (me.role === "admin" || (me.roles || []).includes("incidents") || INCIDENT_NAMES.includes((me.full_name || "").trim().toLowerCase()) || INCIDENT_EMAILS.includes((me.email || "").toLowerCase()));
     if (!allowed) return json({ error: "not permitted" }, 403);
 
     const body = await req.json().catch(() => ({}));
