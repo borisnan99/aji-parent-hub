@@ -274,8 +274,41 @@ function PupilEditor({pupil,classes,onClose,onSaved}){
         <button class="btn gold" style=${{flex:1}} disabled=${busy} onClick=${save}>${busy?'Saving…':(isNew?'Add pupil':'Save changes')}</button></div>
     </div></div>`}
 
+function ConcernCard({row,period}){
+  const r=row.record||{}
+  const [f,setF]=useState({notified_on:r.notified_on||'',contact_method:r.contact_method||'',parent_reason:r.parent_reason||'',outcome:r.outcome||'',review_date:r.review_date||'',status:r.status||'',notes:r.notes||''})
+  const [busy,setBusy]=useState(false);const [msg,setMsg]=useState(row.record?'Saved':'')
+  const set=(k,v)=>setF(s=>({...s,[k]:v}))
+  async function save(){setBusy(true);setMsg('')
+    const stats={pct:row.pct,present:row.present,total:row.total,authorised:row.authorised,unauthorised:row.unauthorised,lates:row.lates}
+    const {data,error}=await sb.functions.invoke('attendance-records',{body:{action:'save',period,pupil_id:row.pupil_id,...f,stats}})
+    setBusy(false);if(error||(data&&data.error)){setMsg((data&&data.error)||(error&&error.message)||'Error');return}
+    setMsg('Saved ✓')}
+  const sev=row.severe
+  const field=(lbl,el)=>html`<label style=${{display:'block',fontSize:11,color:C.muted,marginBottom:6}}>${lbl}${el}</label>`
+  const inp=(k,type)=>html`<input class="in" type=${type||'text'} style=${{marginTop:2}} value=${f[k]} onInput=${e=>set(k,e.target.value)}/>`
+  const ta=k=>html`<textarea class="in" style=${{marginTop:2,minHeight:46,resize:'vertical'}} value=${f[k]} onInput=${e=>set(k,e.target.value)}></textarea>`
+  return html`<div class="card" style=${{padding:'10px 12px',marginBottom:10,borderLeft:'4px solid '+(sev?C.urgent:C.gold)}}>
+    <div style=${{display:'flex',alignItems:'center',gap:8,marginBottom:6,flexWrap:'wrap'}}>
+      <b style=${{fontSize:14}}>${row.name}</b><span class="muted" style=${{fontSize:11}}>${row.year}${row.class?' · '+row.class:''}</span>
+      <span class="tag" style=${{marginLeft:'auto',background:sev?C.urgentSoft:'#FBECC9',color:sev?C.urgent:'#6B5212'}}>${row.pct}%${sev?' · severe':''}</span></div>
+    <div class="muted" style=${{fontSize:11,marginBottom:8}}>Present ${row.present}/${row.total} days · ${row.unauthorised} unauthorised · ${row.authorised} authorised${row.lates?' · '+row.lates+' late':''}</div>
+    <div style=${{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
+      ${field('Parents notified on',inp('notified_on','date'))}
+      ${field('How',html`<select class="in" style=${{marginTop:2}} value=${f.contact_method} onChange=${e=>set('contact_method',e.target.value)}><option value="">—</option>${['Phone call','Text message','Letter','Email','Meeting'].map(o=>html`<option key=${o} value=${o}>${o}</option>`)}</select>`)}</div>
+    ${field('Reason the parents gave',ta('parent_reason'))}
+    ${field('Agreed outcome / action',ta('outcome'))}
+    <div style=${{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
+      ${field('Review date',inp('review_date','date'))}
+      ${field('Status',html`<select class="in" style=${{marginTop:2}} value=${f.status} onChange=${e=>set('status',e.target.value)}><option value="">—</option>${['Parents notified','Meeting held','Under review','Improving','Escalated to LA'].map(o=>html`<option key=${o} value=${o}>${o}</option>`)}</select>`)}</div>
+    <div style=${{display:'flex',gap:8,alignItems:'center',marginTop:4}}>
+      <button class="chip" style=${{background:C.navy,color:'#fff',borderColor:C.navy}} disabled=${busy} onClick=${save}>${busy?'Saving…':'Save record'}</button>
+      ${msg?html`<span style=${{fontSize:12,fontWeight:600,color:(msg.indexOf('✓')>=0||msg==='Saved')?C.green:C.urgent}}>${msg}</span>`:''}</div>
+  </div>`}
+
 function Leaderboard({profile}){
   const [range,setRange]=useState('week');const [data,setData]=useState(null);const [meta,setMeta]=useState({})
+  const [view2,setView2]=useState('league');const [recs,setRecs]=useState(null);const [recErr,setRecErr]=useState('');const [threshold,setThreshold]=useState(90);const [pdfMsg,setPdfMsg]=useState('')
   const iso=d=>{const z=new Date(d.getTime()-d.getTimezoneOffset()*60000);return z.toISOString().slice(0,10)}
   function bounds(r){const now=new Date()
     if(r==='week'){const day=(now.getDay()+6)%7;const mon=new Date(now);mon.setDate(now.getDate()-day);const fri=new Date(mon);fri.setDate(mon.getDate()+4);return [iso(mon),iso(fri)]}
@@ -300,6 +333,59 @@ function Leaderboard({profile}){
     const yrRows=YEARS.filter(y=>yAgg[y]).map(y=>{const g=yAgg[y];return {name:y,present:g.present,absent:g.absent,days:g.days,pct:g.days?Math.round(g.present/g.days*100):0}}).sort((a,b)=>b.pct-a.pct||a.name.localeCompare(b.name))
     setData({yr:yrRows,cls:clsRows});setMeta({from,to})}
   useEffect(()=>{load()},[range])
+  const curMonth=new Date().toISOString().slice(0,7)
+  const recPeriod=range==='week'?curMonth:range
+  const mlab=p=>{const[y,m]=p.split('-');return new Date(+y,+m-1,1).toLocaleDateString('en-GB',{month:'long',year:'numeric'})}
+  const YORD=['Year 7','Year 8','Year 9','Year 10','Year 11','Post-16','Over-18']
+  async function loadRecs(){setRecs(null);setRecErr('');const {data,error}=await sb.functions.invoke('attendance-records',{body:{action:'month',period:recPeriod,threshold}});if(error||(data&&data.error)){setRecErr((data&&data.error)||(error&&error.message)||'Error');return}setRecs(data)}
+  useEffect(()=>{if(view2!=='league')loadRecs()},[view2,recPeriod,threshold])
+  async function jspdf(){const m=await import('https://esm.sh/jspdf@2.5.1');return m.jsPDF||m.default}
+  async function logoURL(){try{const r=await fetch('/logo.png');const b=await r.blob();return await new Promise(res=>{const fr=new FileReader();fr.onload=()=>res(fr.result);fr.onerror=()=>res(null);fr.readAsDataURL(b)})}catch(e){return null}}
+  async function makeRoll(){
+    if(!recs||!recs.honour||!recs.honour.length)return;setPdfMsg('Building roll of honour…')
+    try{const JS=await jspdf();const logo=await logoURL();const doc=new JS({orientation:'portrait',unit:'pt',format:'a4'})
+      const W=doc.internal.pageSize.getWidth(),H=doc.internal.pageSize.getHeight();const nv=[31,42,77],gd=[184,145,47],mu=[120,120,120];const M=54
+      const frame=()=>{doc.setDrawColor(nv[0],nv[1],nv[2]);doc.setLineWidth(2);doc.rect(22,22,W-44,H-44);doc.setDrawColor(gd[0],gd[1],gd[2]);doc.setLineWidth(1);doc.rect(30,30,W-60,H-60)}
+      frame();if(logo){const lw=200,lh=lw*427/1000;doc.addImage(logo,'PNG',(W-lw)/2,44,lw,lh)}
+      let y=196;doc.setFont('times','bold');doc.setFontSize(26);doc.setTextColor(nv[0],nv[1],nv[2]);doc.text('ROLL OF HONOUR',W/2,y,{align:'center'});y+=26
+      doc.setFont('times','bold');doc.setFontSize(15);doc.setTextColor(gd[0],gd[1],gd[2]);doc.text('100% Attendance — '+mlab(recs.period),W/2,y,{align:'center'});y+=22
+      doc.setFont('helvetica','normal');doc.setFontSize(10.5);doc.setTextColor(mu[0],mu[1],mu[2]);doc.text('The following students attended every day this month. Masha’Allah.',W/2,y,{align:'center'});y+=22
+      const byY={};recs.honour.forEach(x=>{(byY[x.year||'Other']=byY[x.year||'Other']||[]).push(x)})
+      const years=YORD.filter(yy=>byY[yy]).concat(Object.keys(byY).filter(yy=>!YORD.includes(yy)))
+      const colX=[M+8,W/2+6]
+      years.forEach(yr=>{const names=byY[yr];const rowsN=Math.ceil(names.length/2);const blockH=28+rowsN*18+12
+        if(y+blockH>H-60){doc.addPage();frame();y=70}
+        doc.setFont('times','bold');doc.setFontSize(13);doc.setTextColor(nv[0],nv[1],nv[2]);doc.text(yr+'  ('+names.length+')',M,y);y+=6
+        doc.setDrawColor(gd[0],gd[1],gd[2]);doc.setLineWidth(0.8);doc.line(M,y,W-M,y);y+=16
+        doc.setFont('helvetica','normal');doc.setFontSize(11);const sY=y
+        names.forEach((x,i)=>{const col=i<rowsN?0:1;const ry=sY+(i%rowsN)*18;doc.setFillColor(gd[0],gd[1],gd[2]);doc.circle(colX[col]+2,ry-3,2,'F');doc.setTextColor(40,40,40);doc.text(x.name,colX[col]+12,ry)})
+        y=sY+rowsN*18+14})
+      doc.setFont('times','normal');doc.setFontSize(10);doc.setTextColor(nv[0],nv[1],nv[2]);doc.text('Al Jamiatul Islamiyah · Bolton Darul Uloom',W/2,H-40,{align:'center'})
+      doc.save('Roll_of_Honour_'+recs.period+'.pdf');setPdfMsg(recs.honour.length+' boys · roll of honour saved ✓')
+    }catch(e){setPdfMsg('Could not build: '+(e&&e.message||e))}}
+  async function makeConcernLog(){
+    if(!recs||!recs.persistent||!recs.persistent.length)return;setPdfMsg('Building follow-up log…')
+    try{const JS=await jspdf();const logo=await logoURL();const doc=new JS({orientation:'landscape',unit:'pt',format:'a4'})
+      const W=doc.internal.pageSize.getWidth(),H=doc.internal.pageSize.getHeight();const nv=[31,42,77],mu=[120,120,120],ik=[34,34,34];const M=28
+      const header=()=>{if(logo){const lw=150,lh=lw*427/1000;doc.addImage(logo,'PNG',M,20,lw,lh)}
+        doc.setFont('times','bold');doc.setFontSize(18);doc.setTextColor(nv[0],nv[1],nv[2]);doc.text('Attendance Follow-Up Record',W-M,40,{align:'right'})
+        doc.setFont('helvetica','normal');doc.setFontSize(10);doc.setTextColor(mu[0],mu[1],mu[2]);doc.text(mlab(recs.period)+' · pupils below '+recs.threshold+'% (persistent absence, DfE statutory)',W-M,58,{align:'right'})}
+      header()
+      const cols=[['Name',96],['Yr / Class',78],['Att%',40],['Parents notified',84],['Reason given',128],['Agreed outcome / action',150],['Review',52],['Status',74]]
+      let x0=M;const cX=[];cols.forEach(c=>{cX.push(x0);x0+=c[1]});const tW=x0-M;let y=84
+      const drawHead=()=>{doc.setFillColor(nv[0],nv[1],nv[2]);doc.rect(M,y,tW,22,'F');doc.setFont('helvetica','bold');doc.setFontSize(9);doc.setTextColor(255,255,255);cols.forEach((c,i)=>doc.text(c[0],cX[i]+4,y+14));y+=22}
+      drawHead();doc.setFont('helvetica','normal');doc.setFontSize(9)
+      const fD=s=>s?new Date(s+'T00:00:00').toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'2-digit'}):''
+      recs.persistent.forEach((r,idx)=>{const rec=r.record||{}
+        const cells=[r.name,(r.year||'')+(r.class?'\n'+r.class:''),r.pct+'%\n'+r.present+'/'+r.total+'d',(fD(rec.notified_on)+(rec.contact_method?'\n'+rec.contact_method:'')).trim(),rec.parent_reason||'',rec.outcome||'',fD(rec.review_date),rec.status||'']
+        const lines=cells.map((t,i)=>doc.splitTextToSize(String(t||''),cols[i][1]-8));const rowH=Math.max(22,...lines.map(l=>l.length*11+8))
+        if(y+rowH>H-34){doc.addPage();header();y=84;drawHead();doc.setFont('helvetica','normal');doc.setFontSize(9)}
+        if(r.severe){doc.setFillColor(252,239,236);doc.rect(M,y,tW,rowH,'F')}else if(idx%2){doc.setFillColor(247,245,238);doc.rect(M,y,tW,rowH,'F')}
+        doc.setTextColor(ik[0],ik[1],ik[2]);lines.forEach((l,i)=>doc.text(l,cX[i]+4,y+13))
+        doc.setDrawColor(222,222,222);doc.setLineWidth(0.5);doc.line(M,y+rowH,M+tW,y+rowH);y+=rowH})
+      doc.setFont('helvetica','italic');doc.setFontSize(8);doc.setTextColor(mu[0],mu[1],mu[2]);doc.text('Generated '+new Date().toLocaleDateString('en-GB')+' · Al Jamiatul Islamiyah · persistent absence = below 90% attendance (DfE).',M,H-16)
+      doc.save('Attendance_Followup_'+recs.period+'.pdf');setPdfMsg(recs.persistent.length+' pupils · follow-up log saved ✓')
+    }catch(e){setPdfMsg('Could not build: '+(e&&e.message||e))}}
   const fmt=s=>{const d=new Date(s+'T00:00:00');return d.toLocaleDateString('en-GB',{day:'numeric',month:'short'})}
   const medal=i=>i===0?'🥇':i===1?'🥈':i===2?'🥉':(i+1)+'.'
   const bar=pct=>html`<div style=${{height:6,background:C.line,borderRadius:99,marginTop:6,overflow:'hidden'}}><div style=${{height:'100%',width:pct+'%',background:`linear-gradient(90deg,${C.gold},${C.goldSoft})`}}></div></div>`
@@ -307,9 +393,7 @@ function Leaderboard({profile}){
     <div style=${{display:'flex',alignItems:'center',gap:5}}><span style=${{fontSize:12,fontWeight:700,color:C.muted,minWidth:16}}>${medal(i)}</span><b style=${{flex:1,fontSize:13,lineHeight:1.15,minWidth:0,wordBreak:'break-word'}}>${r.name}</b><b style=${{fontSize:13,color:C.navy}}>${r.pct}%</b></div>
     ${bar(r.pct)}<div style=${{fontSize:10,marginTop:4,color:detail.warn?C.urgent:C.muted}}>${detail.text}</div></div>`
   const emptyCol=html`<div class="muted" style=${{fontSize:12}}>No marks in this period yet.</div>`
-  return html`<div>
-    <div style=${{display:'flex',gap:6,marginBottom:10,flexWrap:'wrap'}}>${[['week','This week'],...monthOpts()].map(([k,l])=>html`<button key=${k} class="chip ${range===k?'on':''}" onClick=${()=>setRange(k)}>${l}</button>`)}</div>
-    ${data===null?html`<div class="muted">Crunching the numbers…</div>`:html`<div>
+  const leagueBody=data===null?html`<div class="muted">Crunching the numbers…</div>`:html`<div>
       <div class="muted" style=${{fontSize:11,marginBottom:4}}>${fmt(meta.from)} – ${fmt(meta.to)}</div>
       <div class="muted" style=${{fontSize:10,marginBottom:10,lineHeight:1.3}}>Year 7–11 = overall daily attendance (present if in <b>any</b> session). Classes = morning register.</div>
       <div style=${{display:'flex',gap:10}}>
@@ -317,8 +401,37 @@ function Leaderboard({profile}){
           ${data.yr.length===0?emptyCol:data.yr.map((r,i)=>row(r,i,{text:`${r.present}/${r.days} days present`,warn:false}))}</div>
         <div style=${{flex:1,minWidth:0}}><div class="lbl" style=${{marginBottom:6,color:C.navy}}>📖 Morning classes</div>
           ${data.cls.length===0?emptyCol:data.cls.map((r,i)=>row(r,i,r.late>0?{text:`⏰ ${r.late} late · ${r.absent} abs`,warn:true}:{text:`${r.absent} absent`,warn:false}))}</div>
-      </div>
-    </div>`}
+      </div></div>`
+  const honourBody=recErr?html`<div class="card muted" style=${{padding:14}}>Couldn't load: ${recErr}</div>`:recs===null?html`<div class="muted">Finding 100% attenders…</div>`:(()=>{
+    const h=recs.honour||[];const byY={};h.forEach(x=>{(byY[x.year||'Other']=byY[x.year||'Other']||[]).push(x)})
+    const years=YORD.filter(y=>byY[y]).concat(Object.keys(byY).filter(y=>!YORD.includes(y)))
+    return html`<div>
+      <div style=${{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',marginBottom:6}}>
+        <b class="serif" style=${{color:C.navy}}>100% attendance — ${mlab(recs.period)}</b><span class="tag" style=${{background:'#FBECC9',color:'#6B5212'}}>${h.length} boys</span>
+        <button class="chip" style=${{marginLeft:'auto',background:C.gold,color:'#fff',borderColor:C.gold}} disabled=${!h.length} onClick=${makeRoll}>⬇ Roll of honour (PDF)</button></div>
+      <div class="muted" style=${{fontSize:11,marginBottom:8}}>Boys present every registered day this month (a late still counts as present).</div>
+      ${pdfMsg?html`<div style=${{fontSize:12,marginBottom:8,color:C.green,fontWeight:600}}>${pdfMsg}</div>`:''}
+      ${h.length===0?html`<div class="card muted" style=${{padding:14}}>No 100% attenders for ${mlab(recs.period)} yet.</div>`:years.map(y=>html`<div key=${y} style=${{marginBottom:10}}>
+        <div class="lbl" style=${{color:C.navy,marginBottom:4}}>${y} <span class="muted">(${byY[y].length})</span></div>
+        <div class="cardgrid">${byY[y].map(x=>html`<div key=${x.pupil_id} class="card" style=${{padding:'7px 10px',display:'flex',alignItems:'center',gap:6}}><span style=${{color:C.gold}}>★</span><b style=${{fontSize:13}}>${x.name}</b></div>`)}</div></div>`)}
+    </div>`})()
+  const concernsBody=recErr?html`<div class="card muted" style=${{padding:14}}>Couldn't load: ${recErr}</div>`:recs===null?html`<div class="muted">Checking attendance…</div>`:!recs.privileged?html`<div class="card muted" style=${{padding:14}}>The attendance follow-up list is for admins and attendance leads.</div>`:(()=>{
+    const ps=recs.persistent||[]
+    return html`<div>
+      <div style=${{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',marginBottom:6}}>
+        <b class="serif" style=${{color:C.navy}}>Attendance concerns — ${mlab(recs.period)}</b><span class="tag" style=${{background:C.urgentSoft,color:C.urgent}}>${ps.length} below ${recs.threshold}%</span>
+        <button class="chip" style=${{marginLeft:'auto'}} disabled=${!ps.length} onClick=${makeConcernLog}>⬇ Follow-up log (PDF)</button></div>
+      <div style=${{display:'flex',alignItems:'center',gap:8,marginBottom:8,flexWrap:'wrap'}}>
+        <label style=${{fontSize:12,color:C.muted}}>Flag below <input class="in" type="number" min="50" max="100" style=${{width:62,display:'inline-block',margin:'0 4px'}} value=${threshold} onInput=${e=>setThreshold(Math.max(50,Math.min(100,+e.target.value||90)))}/>%</label>
+        <span class="muted" style=${{fontSize:11}}>Statutory persistent absence = below 90%.</span></div>
+      <div class="muted" style=${{fontSize:11,marginBottom:10,lineHeight:1.4}}>Record that parents were notified and the outcome. Based on DfE statutory guidance “Working together to improve school attendance”.</div>
+      ${pdfMsg?html`<div style=${{fontSize:12,marginBottom:8,color:C.green,fontWeight:600}}>${pdfMsg}</div>`:''}
+      ${ps.length===0?html`<div class="card muted" style=${{padding:14}}>No boys below ${recs.threshold}% for ${mlab(recs.period)}. 🎉</div>`:ps.map(r=>html`<${ConcernCard} key=${r.pupil_id} row=${r} period=${recs.period}/>`)}
+    </div>`})()
+  return html`<div>
+    <div style=${{display:'flex',gap:6,marginBottom:10,flexWrap:'wrap'}}>${[['league','🎓 League'],['honour','🏅 100% roll'],['concerns','⚠ Concerns']].map(([k,l])=>html`<button key=${k} class="chip ${view2===k?'on':''}" onClick=${()=>{setView2(k);setPdfMsg('')}}>${l}</button>`)}</div>
+    <div style=${{display:'flex',gap:6,marginBottom:10,flexWrap:'wrap'}}>${[['week','This week'],...monthOpts()].map(([k,l])=>html`<button key=${k} class="chip ${range===k?'on':''}" onClick=${()=>setRange(k)}>${l}</button>`)}</div>
+    ${view2==='honour'?honourBody:view2==='concerns'?concernsBody:leagueBody}
   </div>`}
 
 function Engagement(){
