@@ -18,18 +18,20 @@ Deno.serve(async (req) => {
     const action = body.action || "my_columns";
     const period = (body.period || new Date().toISOString().slice(0, 7)).slice(0, 7);
 
+    // eligible for THIS month: a school-year pupil (not Post-16/Over-18) who had already joined by this month
+    const eligible = (p: any) => !EX_YEARS.includes(p.academic_year) && (!p.start_date || String(p.start_date).slice(0, 7) <= period);
     async function pupilsFor(a: any): Promise<any[]> {
       if (a.group_kind === "academic_year") {
-        const { data } = await svc.from("pupils").select("id,first_name,last_name,academic_year").eq("is_active", true).eq("academic_year", a.group_value).order("last_name");
-        return (data ?? []).filter((p: any) => !EX_YEARS.includes(p.academic_year));
+        const { data } = await svc.from("pupils").select("id,first_name,last_name,academic_year,start_date").eq("is_active", true).eq("academic_year", a.group_value).order("last_name");
+        return (data ?? []).filter(eligible);
       }
       const { data: cls } = await svc.from("classes").select("id").eq("phase", "morning").eq("name", a.group_value).maybeSingle();
       if (!cls) return [];
       const { data: en } = await svc.from("class_enrolments").select("pupil_id").eq("class_id", cls.id);
       const ids = (en ?? []).map((e: any) => e.pupil_id);
       if (!ids.length) return [];
-      const { data } = await svc.from("pupils").select("id,first_name,last_name,academic_year").eq("is_active", true).in("id", ids).order("last_name");
-      return (data ?? []).filter((p: any) => !EX_YEARS.includes(p.academic_year));
+      const { data } = await svc.from("pupils").select("id,first_name,last_name,academic_year,start_date").eq("is_active", true).in("id", ids).order("last_name");
+      return (data ?? []).filter(eligible);
     }
     const nm = (p: any) => (p.first_name + " " + p.last_name).trim();
 

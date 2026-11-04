@@ -176,6 +176,7 @@ function PupilEditor({pupil,classes,onClose,onSaved}){
   const [adm,setAdm]=useState(pupil.admission_no||'');const [yr,setYr]=useState(pupil.academic_year||'Year 7')
   const [mc,setMc]=useState(pupil.morning_class||(classes[0]&&classes[0].name)||'')
   const [bs,setBs]=useState(pupil.boarding_status||'Boarding');const [active,setActive]=useState(pupil.is_active!==false)
+  const [sd,setSd]=useState(pupil.start_date||(pupil.id?'':new Date().toLocaleDateString('en-CA')))
   const [busy,setBusy]=useState(false);const [err,setErr]=useState('')
   const [guardians,setGuardians]=useState(null);const [pEmail,setPEmail]=useState('');const [pName,setPName]=useState('');const [pBusy,setPBusy]=useState(false);const [pMsg,setPMsg]=useState('')
   const [emailDraft,setEmailDraft]=useState({});const [gBusy,setGBusy]=useState('');const [numEdit,setNumEdit]=useState(null);const [numDraft,setNumDraft]=useState({})
@@ -207,7 +208,7 @@ function PupilEditor({pupil,classes,onClose,onSaved}){
   async function save(){
     if(!fn.trim()||!ln.trim()){setErr('First and last name are required');return}
     setBusy(true);setErr('')
-    const payload={first_name:fn.trim(),last_name:ln.trim(),admission_no:adm.trim()||null,academic_year:yr,morning_class:mc,boarding_status:bs,is_active:active}
+    const payload={first_name:fn.trim(),last_name:ln.trim(),admission_no:adm.trim()||null,academic_year:yr,morning_class:mc,boarding_status:bs,is_active:active,start_date:sd||null}
     let pid=pupil.id
     if(isNew){const {data,error}=await sb.from('pupils').insert(payload).select('id').single();if(error){setBusy(false);setErr(error.message);return}pid=data.id}
     else{const {error}=await sb.from('pupils').update(payload).eq('id',pid);if(error){setBusy(false);setErr(error.message);return}}
@@ -230,6 +231,9 @@ function PupilEditor({pupil,classes,onClose,onSaved}){
       <select class="in" value=${mc} onChange=${e=>setMc(e.target.value)}>${classes.slice().sort((a,b)=>a.name.localeCompare(b.name)).map(c=>html`<option key=${c.id} value=${c.name}>${c.name}</option>`)}</select>
       <div class="lbl" style=${{marginTop:12}}>Boarding status</div>
       <div style=${{display:'flex',gap:8,marginTop:6}}>${['Boarding','Commuter'].map(b=>html`<button key=${b} class="chip ${bs===b?'on':''}" style=${{flex:1}} onClick=${()=>setBs(b)}>${b}</button>`)}</div>
+      <div class="lbl" style=${{marginTop:12}}>Start date <span class="muted" style=${{fontWeight:400}}>— first month counted for praise points</span></div>
+      <input class="in" type="date" value=${sd} onInput=${e=>setSd(e.target.value)}/>
+      <div class="muted" style=${{fontSize:11,marginTop:4}}>Leave blank for pupils who were here from the start. New joiners default to today, so they are not counted in earlier months.</div>
       ${!isNew&&html`<div style=${{display:'flex',alignItems:'center',justifyContent:'space-between',marginTop:14}}>
         <div><b>On roll</b><div class="muted" style=${{fontSize:11}}>Turn off if the pupil has left</div></div>
         <button class="chip ${active?'on':''}" onClick=${()=>setActive(a=>!a)}>${active?'On roll':'Left'}</button></div>`}
