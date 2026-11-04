@@ -386,6 +386,92 @@ function Leaderboard({profile}){
       doc.setFont('helvetica','italic');doc.setFontSize(8);doc.setTextColor(mu[0],mu[1],mu[2]);doc.text('Generated '+new Date().toLocaleDateString('en-GB')+' · Al Jamiatul Islamiyah · persistent absence = below 90% attendance (DfE).',M,H-16)
       doc.save('Attendance_Followup_'+recs.period+'.pdf');setPdfMsg(recs.persistent.length+' pupils · follow-up log saved ✓')
     }catch(e){setPdfMsg('Could not build: '+(e&&e.message||e))}}
+  function buildPoster(honour,period,logo){
+    const W=1040
+    const rad=d=>d*Math.PI/180
+    const sp=(cx,cy,o,ii,pts)=>{let a=[];for(let i=0;i<pts*2;i++){const r=i%2?ii:o;const an=rad(i*(180/pts)-90);a.push((cx+r*Math.cos(an)).toFixed(1)+','+(cy+r*Math.sin(an)).toFixed(1))}return a.join(' ')}
+    const gear=(cx,cy,o,ii,t)=>{let a=[];for(let i=0;i<t*2;i++){const r=i%2?ii:o;const an=rad(i*(180/t));a.push((cx+r*Math.cos(an)).toFixed(1)+','+(cy+r*Math.sin(an)).toFixed(1))}return a.join(' ')}
+    const esc=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    const GOLD='#F2C94C',GDK='#9E7B1B',NAVY='#0B2A6B',NAVYD='#07163F',CREAM='#FBF6E9',INK='#10245E'
+    const [yy,mm]=period.split('-');const month=new Date(+yy,+mm-1,1).toLocaleDateString('en-GB',{month:'long',year:'numeric'}).toUpperCase()
+    const YORD=['Year 7','Year 8','Year 9','Year 10','Year 11','Post-16','Over-18']
+    const byY={};honour.forEach(x=>{(byY[x.year||'Other']=byY[x.year||'Other']||[]).push(x)});Object.keys(byY).forEach(k=>byY[k].sort((a,b)=>a.name.localeCompare(b.name)))
+    const years=YORD.filter(y=>byY[y]).concat(Object.keys(byY).filter(y=>!YORD.includes(y)))
+    const L=70,colW=430,gap=40,xL=L,xR=L+colW+gap,gy0=600
+    const fsFor=n=>n.length>28?16:n.length>22?18:20
+    let yL=gy0,yR=gy0;const place=[]
+    years.forEach(y=>{const ch=64+byY[y].length*34+20;if(yL<=yR){place.push({y,x:xL,top:yL,h:ch});yL+=ch+30}else{place.push({y,x:xR,top:yR,h:ch});yR+=ch+30}})
+    const gridBottom=Math.max(yL,yR),ribbonY=gridBottom+26,footTagY=ribbonY+96,H=footTagY+150
+    function ribbonSVG(cx,cy,w,h,text,fs){return '<g filter="url(#sh)">'
+      +'<polygon points="'+(cx-w/2-64)+','+(cy-h*0.1)+' '+(cx-w/2)+','+(cy-h/2)+' '+(cx-w/2)+','+(cy+h/2)+' '+(cx-w/2-64)+','+(cy+h*1.05)+' '+(cx-w/2-36)+','+(cy+h/2)+'" fill="'+GDK+'"/>'
+      +'<polygon points="'+(cx+w/2+64)+','+(cy-h*0.1)+' '+(cx+w/2)+','+(cy-h/2)+' '+(cx+w/2)+','+(cy+h/2)+' '+(cx+w/2+64)+','+(cy+h*1.05)+' '+(cx+w/2+36)+','+(cy+h/2)+'" fill="'+GDK+'"/>'
+      +'<rect x="'+(cx-w/2)+'" y="'+(cy-h/2)+'" width="'+w+'" height="'+h+'" rx="8" fill="url(#gold)" stroke="'+GDK+'" stroke-width="2"/>'
+      +'<rect x="'+(cx-w/2)+'" y="'+(cy-h/2)+'" width="'+w+'" height="'+(h*0.28)+'" fill="#ffffff" opacity="0.25"/>'
+      +'<text x="'+cx+'" y="'+(cy+fs*0.34)+'" text-anchor="middle" font-family="Georgia,serif" font-weight="700" font-size="'+fs+'" fill="'+NAVYD+'" letter-spacing="2">'+esc(text)+'</text></g>'}
+    function trophySVG(cx,cy){return '<g filter="url(#sh)" transform="translate('+cx+','+cy+') scale(0.95)">'
+      +'<path d="M -58 -96 Q -112 -92 -112 -48 Q -112 -8 -60 -4" fill="none" stroke="'+GDK+'" stroke-width="13"/>'
+      +'<path d="M 58 -96 Q 112 -92 112 -48 Q 112 -8 60 -4" fill="none" stroke="'+GDK+'" stroke-width="13"/>'
+      +'<path d="M -66 -112 L 66 -112 L 58 -30 Q 0 36 -58 -30 Z" fill="url(#gold)" stroke="'+GDK+'" stroke-width="3"/>'
+      +'<polygon points="'+sp(0,-78,26,11,5)+'" fill="'+NAVYD+'"/>'
+      +'<rect x="-13" y="26" width="26" height="44" fill="'+GDK+'"/>'
+      +'<rect x="-56" y="68" width="112" height="22" rx="5" fill="url(#gold)" stroke="'+GDK+'" stroke-width="2"/>'
+      +'<rect x="-76" y="90" width="152" height="26" rx="7" fill="'+GDK+'"/></g>'}
+    function rosetteSVG(cx,cy,R){return '<g filter="url(#sh)">'
+      +'<polygon points="'+(cx-R*0.3)+','+(cy+R*0.5)+' '+(cx-R*0.12)+','+(cy+R*1.5)+' '+cx+','+(cy+R*1.12)+' '+(cx+R*0.12)+','+(cy+R*1.5)+' '+(cx+R*0.3)+','+(cy+R*0.5)+'" fill="'+NAVY+'"/>'
+      +'<polygon points="'+gear(cx,cy,R*1.15,R*0.92,32)+'" fill="url(#gold)" stroke="'+GDK+'" stroke-width="2"/>'
+      +'<circle cx="'+cx+'" cy="'+cy+'" r="'+(R*0.92)+'" fill="url(#gold)" stroke="'+GDK+'" stroke-width="2"/>'
+      +'<circle cx="'+cx+'" cy="'+cy+'" r="'+(R*0.74)+'" fill="'+NAVYD+'"/>'
+      +'<polygon points="'+sp(cx,cy,R*0.6,R*0.26,5)+'" fill="url(#gold)"/></g>'}
+    function mosqueSVG(y){const dome=(x,w,h)=>'<path d="M '+(x-w)+' '+y+' Q '+(x-w)+' '+(y-h)+' '+x+' '+(y-h-10)+' Q '+(x+w)+' '+(y-h)+' '+(x+w)+' '+y+' Z"/>'
+      const spire=x=>'<rect x="'+(x-5)+'" y="'+(y-110)+'" width="10" height="110"/><path d="M '+(x-11)+' '+(y-110)+' Q '+x+' '+(y-140)+' '+(x+11)+' '+(y-110)+' Z"/><circle cx="'+x+'" cy="'+(y-146)+'" r="6"/>'
+      return '<g opacity="0.4" fill="'+GOLD+'">'+spire(W/2-250)+spire(W/2+250)+dome(W/2-150,46,38)+dome(W/2+150,46,38)+dome(W/2,72,58)+'</g>'}
+    const S=['<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="'+W+'" height="'+H+'" viewBox="0 0 '+W+' '+H+'">']
+    S.push('<defs>')
+    S.push('<linearGradient id="bgg" x1="0" y1="0" x2="0.3" y2="1"><stop offset="0" stop-color="#15408F"/><stop offset="1" stop-color="#06143A"/></linearGradient>')
+    S.push('<linearGradient id="gold" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FBE8A6"/><stop offset="0.5" stop-color="'+GOLD+'"/><stop offset="1" stop-color="'+GDK+'"/></linearGradient>')
+    S.push('<filter id="wht"><feColorMatrix type="matrix" values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 1 0"/></filter>')
+    S.push('<filter id="sh" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="3" stdDeviation="4" flood-color="#00000055"/></filter>')
+    S.push('<pattern id="geo" width="118" height="118" patternUnits="userSpaceOnUse"><polygon points="'+sp(59,59,40,17,8)+'" fill="none" stroke="'+GOLD+'" stroke-width="1.2" opacity="0.09"/></pattern>')
+    S.push('</defs>')
+    S.push('<rect width="'+W+'" height="'+H+'" fill="url(#bgg)"/><rect width="'+W+'" height="'+H+'" fill="url(#geo)"/>')
+    S.push('<rect x="22" y="22" width="'+(W-44)+'" height="'+(H-44)+'" rx="26" fill="none" stroke="url(#gold)" stroke-width="10"/>')
+    S.push('<rect x="40" y="40" width="'+(W-80)+'" height="'+(H-80)+'" rx="18" fill="none" stroke="'+GOLD+'" stroke-width="2" opacity="0.55"/>')
+    const mcx=W/2,mcy=186
+    S.push('<circle cx="'+mcx+'" cy="'+mcy+'" r="118" fill="'+NAVYD+'" stroke="url(#gold)" stroke-width="8" filter="url(#sh)"/>')
+    S.push('<circle cx="'+mcx+'" cy="'+mcy+'" r="104" fill="none" stroke="'+GOLD+'" stroke-width="2" opacity="0.7"/>')
+    if(logo)S.push('<image xlink:href="'+logo+'" href="'+logo+'" x="'+(mcx-98)+'" y="'+(mcy-42)+'" width="196" height="'+(196*427/1000)+'" filter="url(#wht)"/>')
+    S.push(trophySVG(mcx-322,180))
+    S.push(rosetteSVG(mcx+322,168,64))
+    S.push(ribbonSVG(W/2,398,780,98,'ROLL OF HONOUR',70))
+    S.push('<rect x="'+(W/2-352)+'" y="453" width="704" height="66" rx="33" fill="'+NAVYD+'" stroke="url(#gold)" stroke-width="4"/>')
+    S.push('<text x="'+(W/2)+'" y="498" text-anchor="middle" font-family="Georgia,serif" font-weight="700" font-size="34" fill="'+GOLD+'" letter-spacing="2">100% ATTENDANCE &#160;&#8226;&#160; '+month+'</text>')
+    S.push('<rect x="'+(W/2-335)+'" y="534" width="670" height="44" rx="22" fill="#ffffff" opacity="0.95"/>')
+    S.push('<text x="'+(W/2)+'" y="562" text-anchor="middle" font-family="Georgia,serif" font-style="italic" font-size="21" fill="'+INK+'">Masha’Allah! Celebrating our students’ commitment and consistency.</text>')
+    place.forEach(pl=>{const names=byY[pl.y],x=pl.x,y=pl.top,h=pl.h
+      S.push('<rect x="'+x+'" y="'+y+'" width="'+colW+'" height="'+h+'" rx="16" fill="'+CREAM+'" stroke="url(#gold)" stroke-width="3" filter="url(#sh)"/>')
+      S.push('<rect x="'+(x+26)+'" y="'+(y-16)+'" width="'+(colW-52)+'" height="48" rx="24" fill="'+NAVY+'" stroke="url(#gold)" stroke-width="3"/>')
+      S.push('<text x="'+(x+colW/2)+'" y="'+(y+16)+'" text-anchor="middle" font-family="Georgia,serif" font-weight="700" font-size="25" fill="'+GOLD+'" letter-spacing="1">'+esc(pl.y.toUpperCase())+'&#160; ('+names.length+')</text>')
+      let ny=y+66;names.forEach(nm=>{S.push('<circle cx="'+(x+32)+'" cy="'+(ny-6)+'" r="4.5" fill="'+GDK+'"/>');S.push('<text x="'+(x+48)+'" y="'+ny+'" font-family="Georgia,serif" font-weight="600" font-size="'+fsFor(nm.name)+'" fill="'+INK+'">'+esc(nm.name)+'</text>');ny+=34})})
+    S.push(ribbonSVG(W/2,ribbonY+42,840,86,'★ '+honour.length+' STUDENTS • 100% ATTENDANCE ★',40))
+    S.push('<text x="'+(W/2)+'" y="'+(footTagY+34)+'" text-anchor="middle" font-family="Georgia,serif" font-style="italic" font-weight="700" font-size="30" fill="'+GOLD+'" letter-spacing="2">Consistency &#160;&#8226;&#160; Commitment &#160;&#8226;&#160; Excellence</text>')
+    S.push(mosqueSVG(H-54))
+    S.push('</svg>')
+    return {svg:S.join(''),W,H}
+  }
+  async function makePoster(){
+    if(!recs||!recs.honour||!recs.honour.length)return;setPdfMsg('Building poster…')
+    try{
+      const logo=await logoURL()
+      const {svg,W,H}=buildPoster(recs.honour,recs.period,logo)
+      const url=URL.createObjectURL(new Blob([svg],{type:'image/svg+xml;charset=utf-8'}))
+      const img=new Image()
+      await new Promise((res,rej)=>{img.onload=res;img.onerror=()=>rej(new Error('render failed'));img.src=url})
+      const scale=2;const cv=document.createElement('canvas');cv.width=W*scale;cv.height=H*scale
+      const ctx=cv.getContext('2d');ctx.scale(scale,scale);ctx.drawImage(img,0,0);URL.revokeObjectURL(url)
+      await new Promise(res=>cv.toBlob(b=>{const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='Roll_of_Honour_Poster_'+recs.period+'.png';document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();res()},0)},'image/png'))
+      setPdfMsg(recs.honour.length+' boys · poster saved ✓')
+    }catch(e){setPdfMsg('Could not build poster: '+(e&&e.message||e))}
+  }
   const fmt=s=>{const d=new Date(s+'T00:00:00');return d.toLocaleDateString('en-GB',{day:'numeric',month:'short'})}
   const medal=i=>i===0?'🥇':i===1?'🥈':i===2?'🥉':(i+1)+'.'
   const bar=pct=>html`<div style=${{height:6,background:C.line,borderRadius:99,marginTop:6,overflow:'hidden'}}><div style=${{height:'100%',width:pct+'%',background:`linear-gradient(90deg,${C.gold},${C.goldSoft})`}}></div></div>`
@@ -408,7 +494,8 @@ function Leaderboard({profile}){
     return html`<div>
       <div style=${{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',marginBottom:6}}>
         <b class="serif" style=${{color:C.navy}}>100% attendance — ${mlab(recs.period)}</b><span class="tag" style=${{background:'#FBECC9',color:'#6B5212'}}>${h.length} boys</span>
-        <button class="chip" style=${{marginLeft:'auto',background:C.gold,color:'#fff',borderColor:C.gold}} disabled=${!h.length} onClick=${makeRoll}>⬇ Roll of honour (PDF)</button></div>
+        <button class="chip" style=${{marginLeft:'auto',background:'#0B2A6B',color:'#fff',borderColor:'#0B2A6B'}} disabled=${!h.length} onClick=${makePoster}>🖼️ Poster (PNG)</button>
+        <button class="chip" style=${{background:C.gold,color:'#fff',borderColor:C.gold}} disabled=${!h.length} onClick=${makeRoll}>⬇ List (PDF)</button></div>
       <div class="muted" style=${{fontSize:11,marginBottom:8}}>Boys present every registered day this month (a late still counts as present).</div>
       ${pdfMsg?html`<div style=${{fontSize:12,marginBottom:8,color:C.green,fontWeight:600}}>${pdfMsg}</div>`:''}
       ${h.length===0?html`<div class="card muted" style=${{padding:14}}>No 100% attenders for ${mlab(recs.period)} yet.</div>`:years.map(y=>html`<div key=${y} style=${{marginBottom:10}}>
