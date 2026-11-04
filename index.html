@@ -512,6 +512,7 @@ function PraiseCollation(){
   const [d,setD]=useState(null);const [period,setPeriod]=useState(null);const [err,setErr]=useState('')
   const [fp,setFp]=useState(curP);const [fatt,setFatt]=useState(true);const [fprev,setFprev]=useState(null);const [fbusy,setFbusy]=useState(false);const [fmsg,setFmsg]=useState('')
   const [cbusy,setCbusy]=useState(false);const [cmsg,setCmsg]=useState('')
+  const [sprev,setSprev]=useState(null);const [sbusy,setSbusy]=useState(false);const [smsg,setSmsg]=useState('');const [sprog,setSprog]=useState(null)
   async function load(p){setD(null);const {data,error}=await sb.functions.invoke('praise-collation',{body:p?{period:p}:{}});if(error||(data&&data.error)){setErr((data&&data.error)||error.message);return}setErr('');setD(data);setPeriod(data.period)}
   useEffect(()=>{load()},[])
   async function compute(){setFbusy(true);setFmsg('');setFprev(null);const {data,error}=await sb.functions.invoke('praise-finalise',{body:{action:'compute',period:fp,attendance:fatt}});setFbusy(false);if(error||(data&&data.error)){setFmsg((data&&data.error)||(error&&error.message)||'Error');return}setFprev(data)}
@@ -572,6 +573,49 @@ function PraiseCollation(){
     }catch(e){setCmsg('Could not build certificates: '+(e&&e.message||e))}
     setCbusy(false)
   }
+  function drawCert(doc,w,bg){
+    const W=doc.internal.pageSize.getWidth(),H=doc.internal.pageSize.getHeight();const S=W/2480;const cx=W/2
+    const navy=[31,42,77];const tierCol={Gold:[156,122,30],Silver:[91,98,110],Bronze:[138,82,38]}
+    const [yy,mm]=period.split('-');const full=new Date(+yy,+mm-1,1).toLocaleDateString('en-GB',{month:'long',year:'numeric'})
+    if(bg)doc.addImage(bg,'PNG',0,0,W,H,'bg-'+w.award,'FAST')
+    const nm=String(w.student_name||'').trim()
+    doc.setFont('times','bold');doc.setTextColor(navy[0],navy[1],navy[2]);let fs=36;doc.setFontSize(fs);const maxW=1060*S
+    while(doc.getTextWidth(nm)>maxW&&fs>16){fs-=1;doc.setFontSize(fs)}
+    doc.text(nm,cx,1120*S,{align:'center'})
+    doc.setFont('times','normal');doc.setFontSize(15);doc.setTextColor(navy[0],navy[1],navy[2])
+    const cls=w.group_name?('of '+w.group_name+' Class'+(w.year?' ('+w.year+')':'')+' for achieving'):(w.year?('of '+w.year+' for achieving'):'for achieving')
+    doc.text(cls,cx,1255*S,{align:'center'})
+    const tc=tierCol[w.award]||navy;doc.setFont('times','bold');doc.setFontSize(30);doc.setTextColor(tc[0],tc[1],tc[2])
+    doc.text(String(w.pct)+'%',cx,1335*S,{align:'center'})
+    doc.setFont('times','normal');doc.setFontSize(14);doc.setTextColor(navy[0],navy[1],navy[2])
+    doc.text('during the month of '+full+'.',cx,1395*S,{align:'center'})
+  }
+  async function previewSend(){setSbusy(true);setSmsg('');setSprev(null);const {data,error}=await sb.functions.invoke('send-praise-awards',{body:{action:'preview',period}});setSbusy(false);if(error||(data&&data.error)){setSmsg((data&&data.error)||(error&&error.message)||'Error');return}setSprev(data)}
+  async function sendAll(resend){
+    if(!sprev)return
+    const winners=(d.rows||[]).filter(r=>['Gold','Silver','Bronze'].includes(r.award))
+    const pv={};(sprev.winners||[]).forEach(w=>pv[w.pupil_id]=w)
+    const todo=winners.filter(w=>{const x=pv[w.pupil_id];return x&&x.parent_count>0&&(resend||!x.already_sent)})
+    if(!todo.length){setSmsg('Nothing to send — matched winners are already sent. Use “Re-send all” to send again.');return}
+    if(!window.confirm('Send '+todo.length+' boy'+(todo.length===1?'':'s')+'’ parents a message and their son’s certificate'+(resend?' (re-sending)':'')+'?'))return
+    setSbusy(true);setSmsg('');setSprog({done:0,total:todo.length,sent:0,fail:0})
+    try{
+      const mod=await import('https://esm.sh/jspdf@2.5.1');const JS=mod.jsPDF||mod.default
+      const bgs={};for(const t of ['Gold','Silver','Bronze'])if(todo.some(w=>w.award===t))bgs[t]=await certBg(t)
+      let sent=0,fail=0
+      for(let i=0;i<todo.length;i++){const w=todo[i]
+        try{const doc=new JS({orientation:'landscape',unit:'pt',format:'a4'});drawCert(doc,w,bgs[w.award])
+          const b64=doc.output('datauristring').split('base64,')[1]
+          const {data,error}=await sb.functions.invoke('send-praise-awards',{body:{action:'send',period,pupil_id:w.pupil_id,pdf_base64:b64,force:!!resend}})
+          if(error||(data&&data.error))fail++;else sent++
+        }catch(e){fail++}
+        setSprog({done:i+1,total:todo.length,sent,fail})}
+      setSmsg('Done — parents messaged for '+sent+' boy'+(sent===1?'':'s')+(fail?' · '+fail+' failed':'')+'. Each parent got the message and the certificate.')
+      await previewSend()
+    }catch(e){setSmsg('Could not send: '+(e&&e.message||e))}
+    setSbusy(false);setSprog(null)
+  }
+  const award3=d&&d.rows?d.rows.filter(r=>['Gold','Silver','Bronze'].includes(r.award)).length:0
   const finalisePanel=html`<div class="card" style=${{padding:'12px 14px',marginBottom:12,border:'1px solid '+C.gold,background:'#FCFAF3'}}>
     <b class="serif" style=${{color:C.navy}}>Work out results</b>
     <div class="muted" style=${{fontSize:11,marginTop:2}}>Builds the month's table from the scores entered. A <b>0</b> means "not taught" and is left out of the boy's average. Review the preview, then publish.</div>
@@ -605,10 +649,24 @@ function PraiseCollation(){
         <div class="card" style=${{flex:'1 1 70px',padding:'10px 12px',textAlign:'center'}}><div style=${{fontSize:20}}>🥉</div><div class="serif" style=${{fontSize:18,fontWeight:700,color:C.navy}}>${s.bronze}</div><div class="muted" style=${{fontSize:10}}>Bronze</div></div>
       </div>
       <div class="muted" style=${{fontSize:11,marginBottom:8}}>${s.awarded} of ${s.total} pupils earned a certificate this month. Gold 95–100% · Silver 90–94% · Bronze 85–89%.</div>
-      <div style=${{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap',marginBottom:12}}>
+      <div style=${{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap',marginBottom:8}}>
         <button class="chip" style=${{background:C.gold,color:'#fff',borderColor:C.gold}} disabled=${cbusy||!s.awarded} onClick=${()=>makeCertificates(d.rows,period)}>${cbusy?'Building…':'🏅 Certificates PDF ('+s.awarded+')'}</button>
+        <button class="chip" style=${{background:C.navy,color:'#fff',borderColor:C.navy}} disabled=${sbusy||!s.awarded} onClick=${previewSend}>${sbusy&&!sprog?'Checking…':'📣 Message parents ('+s.awarded+')'}</button>
         ${cmsg?html`<span style=${{fontSize:12,color:cmsg.indexOf('Could not')>=0?C.urgent:C.green,fontWeight:600}}>${cmsg}</span>`:''}
       </div>
+      ${(sprev||smsg||sprog)?html`<div class="card" style=${{padding:'12px 14px',marginBottom:12,border:'1px solid '+C.navy,background:'#F6F8FC'}}>
+        <b class="serif" style=${{color:C.navy}}>Message parents — ${mlbl(period)}</b>
+        ${sprev?html`<div style=${{fontSize:12,margin:'6px 0 8px',lineHeight:1.5}}>
+          <b>${sprev.summary.winners}</b> award-winners · <b>${sprev.summary.with_parents}</b> have a linked parent${sprev.summary.no_parent?html` · <span style=${{color:C.urgent}}>${sprev.summary.no_parent} no linked parent</span>`:''}${sprev.summary.already_sent?' · '+sprev.summary.already_sent+' already sent':''}.
+          <div class="muted" style=${{marginTop:4}}>Each parent gets a positive message (Gold most upbeat → Silver → Bronze) and their son’s certificate — in the app and by email.</div></div>`:''}
+        ${sprog?html`<div style=${{fontSize:12,margin:'6px 0'}}>Sending… <b>${sprog.done}/${sprog.total}</b>${sprog.fail?' · '+sprog.fail+' failed':''}
+          <div style=${{height:6,background:C.line,borderRadius:99,marginTop:4,overflow:'hidden'}}><div style=${{height:'100%',width:(sprog.total?Math.round(sprog.done/sprog.total*100):0)+'%',background:C.navy}}></div></div></div>`:''}
+        ${smsg?html`<div style=${{fontSize:12,margin:'6px 0',fontWeight:600,color:smsg.indexOf('Could not')>=0||smsg.indexOf('Nothing')>=0?C.urgent:C.green}}>${smsg}</div>`:''}
+        ${sprev&&!sprog?html`<div style=${{display:'flex',gap:8,marginTop:6,flexWrap:'wrap'}}>
+          <button class="btn" style=${{background:C.green}} disabled=${sbusy||!sprev.summary.with_parents} onClick=${()=>sendAll(false)}>${sbusy?'Working…':'✓ Send to parents'}</button>
+          ${sprev.summary.already_sent?html`<button class="chip" disabled=${sbusy} onClick=${()=>sendAll(true)}>Re-send all</button>`:''}
+          <button class="chip" onClick=${()=>{setSprev(null);setSmsg('')}}>Close</button></div>`:''}
+      </div>`:''}
       <div class="lbl" style=${{marginBottom:4}}>By class (average %)</div>
       <div style=${{display:'flex',gap:6,flexWrap:'wrap',marginBottom:12}}>${s.groups.map(g=>html`<span key=${g.group} class="chip">${g.group} <b style=${{color:C.gold}}>${g.avg}%</b></span>`)}</div>
     </div>`:(d.periods.length?html`<div class="card muted" style=${{padding:14,marginBottom:12}}>No praise points collated for ${period?mlbl(period):'this month'} yet — behaviour deductions for the month are shown below.</div>`:'')}
