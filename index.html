@@ -421,8 +421,12 @@ function PraiseCollation(){
     const blob=new Blob(['﻿'+lines.join('\n')],{type:'text/csv;charset=utf-8'})
     const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='Praise_results_'+fp+'.csv';document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},0)
   }
-  async function logoDataUrl(){
-    try{const r=await fetch('/logo.png');const b=await r.blob();return await new Promise(res=>{const fr=new FileReader();fr.onload=()=>res(fr.result);fr.onerror=()=>res(null);fr.readAsDataURL(b)})}catch(e){return null}
+  const certCache={}
+  async function certBg(award){
+    const k=award.toLowerCase();if(certCache[k])return certCache[k]
+    const r=await fetch('/cert-'+k+'.png');const b=await r.blob()
+    const url=await new Promise(res=>{const fr=new FileReader();fr.onload=()=>res(fr.result);fr.onerror=()=>res(null);fr.readAsDataURL(b)})
+    certCache[k]=url;return url
   }
   async function makeCertificates(rows,per){
     const winners=(rows||[]).filter(r=>['Gold','Silver','Bronze'].includes(r.award))
@@ -430,33 +434,25 @@ function PraiseCollation(){
     setCbusy(true);setCmsg('Building '+winners.length+' certificates…')
     try{
       const mod=await import('https://esm.sh/jspdf@2.5.1');const JS=mod.jsPDF||mod.default
-      const logo=await logoDataUrl()
-      const navy=[31,42,77],gold=[184,145,47],ink=[34,34,34],muted=[120,120,120]
-      const tierCol={Gold:[184,145,47],Silver:[122,128,138],Bronze:[150,101,56]}
+      const bgs={};for(const t of ['Gold','Silver','Bronze'])if(winners.some(w=>w.award===t))bgs[t]=await certBg(t)
+      const navy=[31,42,77];const tierCol={Gold:[156,122,30],Silver:[91,98,110],Bronze:[138,82,38]}
       const [yy,mm]=per.split('-');const full=new Date(+yy,+mm-1,1).toLocaleDateString('en-GB',{month:'long',year:'numeric'})
       const doc=new JS({orientation:'landscape',unit:'pt',format:'a4'})
-      const W=doc.internal.pageSize.getWidth(),H=doc.internal.pageSize.getHeight()
+      const W=doc.internal.pageSize.getWidth(),H=doc.internal.pageSize.getHeight();const S=W/2480;const cx=W/2
       winners.forEach((r,i)=>{
         if(i>0)doc.addPage()
-        doc.setFillColor(255,255,255);doc.rect(0,0,W,H,'F')
-        doc.setDrawColor(navy[0],navy[1],navy[2]);doc.setLineWidth(3);doc.rect(26,26,W-52,H-52)
-        doc.setDrawColor(gold[0],gold[1],gold[2]);doc.setLineWidth(1);doc.rect(38,38,W-76,H-76)
-        if(logo){const lw=230,lh=lw*427/1000;doc.addImage(logo,'PNG',(W-lw)/2,66,lw,lh)}
-        else{doc.setFont('times','bold');doc.setFontSize(20);doc.setTextColor(navy[0],navy[1],navy[2]);doc.text('Al Jamiatul Islamiyah',W/2,120,{align:'center'})}
-        doc.setFont('times','bold');doc.setFontSize(25);doc.setTextColor(gold[0],gold[1],gold[2]);doc.text('CERTIFICATE OF ACHIEVEMENT',W/2,210,{align:'center'})
-        doc.setFont('helvetica','normal');doc.setFontSize(12);doc.setTextColor(muted[0],muted[1],muted[2]);doc.text('This is proudly presented to',W/2,244,{align:'center'})
-        const nm=String(r.student_name||'');doc.setFont('times','bolditalic');doc.setFontSize(nm.length>24?30:40);doc.setTextColor(navy[0],navy[1],navy[2]);doc.text(nm,W/2,300,{align:'center'})
-        doc.setDrawColor(gold[0],gold[1],gold[2]);doc.setLineWidth(1);doc.line(W/2-150,318,W/2+150,318)
-        doc.setFont('helvetica','normal');doc.setFontSize(13);doc.setTextColor(ink[0],ink[1],ink[2])
-        doc.text('for outstanding effort in the monthly Praise Points for '+full,W/2,352,{align:'center'})
-        const tc=tierCol[r.award]||navy;doc.setFont('times','bold');doc.setFontSize(20);doc.setTextColor(tc[0],tc[1],tc[2])
-        doc.text(r.award.toUpperCase()+' AWARD   ·   '+r.pct+'%',W/2,398,{align:'center'})
-        doc.setFont('helvetica','normal');doc.setFontSize(11);doc.setTextColor(muted[0],muted[1],muted[2]);doc.text('Ranked '+r.rank+' of the month'+(r.group_name?'  ·  '+r.group_name:'')+(r.year?'  ·  '+r.year:''),W/2,418,{align:'center'})
-        const sy=500;doc.setDrawColor(navy[0],navy[1],navy[2]);doc.setLineWidth(0.8)
-        doc.line(170,sy,350,sy);doc.line(W-350,sy,W-170,sy)
-        doc.setFont('helvetica','normal');doc.setFontSize(10);doc.setTextColor(muted[0],muted[1],muted[2])
-        doc.text('Head of Islamic Studies',260,sy+15,{align:'center'});doc.text('Principal',W-260,sy+15,{align:'center'})
-        doc.setFont('times','normal');doc.setFontSize(11);doc.setTextColor(navy[0],navy[1],navy[2]);doc.text('Al Jamiatul Islamiyah  ·  Bolton Darul Uloom',W/2,H-56,{align:'center'})
+        const bg=bgs[r.award];if(bg)doc.addImage(bg,'PNG',0,0,W,H,'bg-'+r.award,'FAST') // alias reuses one embedded image
+        const nm=String(r.student_name||'').trim()
+        doc.setFont('times','bold');doc.setTextColor(navy[0],navy[1],navy[2]);let fs=36;doc.setFontSize(fs);const maxW=1060*S
+        while(doc.getTextWidth(nm)>maxW&&fs>16){fs-=1;doc.setFontSize(fs)}
+        doc.text(nm,cx,1120*S,{align:'center'})
+        doc.setFont('times','normal');doc.setFontSize(15);doc.setTextColor(navy[0],navy[1],navy[2])
+        const cls=r.group_name?('of '+r.group_name+' Class'+(r.year?' ('+r.year+')':'')+' for achieving'):(r.year?('of '+r.year+' for achieving'):'for achieving')
+        doc.text(cls,cx,1255*S,{align:'center'})
+        const tc=tierCol[r.award]||navy;doc.setFont('times','bold');doc.setFontSize(30);doc.setTextColor(tc[0],tc[1],tc[2])
+        doc.text(String(r.pct)+'%',cx,1335*S,{align:'center'})
+        doc.setFont('times','normal');doc.setFontSize(14);doc.setTextColor(navy[0],navy[1],navy[2])
+        doc.text('during the month of '+full+'.',cx,1395*S,{align:'center'})
       })
       doc.save('AJI_Certificates_'+per+'.pdf')
       setCmsg(winners.length+' certificates saved for '+mlbl(per)+' ✓')
