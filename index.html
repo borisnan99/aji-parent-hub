@@ -395,19 +395,39 @@ function PraiseEntry({canProxy}){
   </div>`}
 
 function PraiseCollation(){
+  const curP=new Date().toISOString().slice(0,7)
   const [d,setD]=useState(null);const [period,setPeriod]=useState(null);const [err,setErr]=useState('')
-  async function load(p){setD(null);const {data,error}=await sb.functions.invoke('praise-collation',{body:p?{period:p}:{}});if(error||(data&&data.error)){setErr((data&&data.error)||error.message);return}setD(data);setPeriod(data.period)}
+  const [fp,setFp]=useState(curP);const [fatt,setFatt]=useState(true);const [fprev,setFprev]=useState(null);const [fbusy,setFbusy]=useState(false);const [fmsg,setFmsg]=useState('')
+  async function load(p){setD(null);const {data,error}=await sb.functions.invoke('praise-collation',{body:p?{period:p}:{}});if(error||(data&&data.error)){setErr((data&&data.error)||error.message);return}setErr('');setD(data);setPeriod(data.period)}
   useEffect(()=>{load()},[])
-  if(err)return html`<div class="card muted" style=${{padding:16}}>Couldn't load collation: ${err}</div>`
-  if(!d)return html`<div class="muted">Loading results…</div>`
-  if(!d.periods.length)return html`<div class="card muted" style=${{padding:16}}>No results yet. Praise results and behaviour codes appear here by month.</div>`
+  async function compute(){setFbusy(true);setFmsg('');setFprev(null);const {data,error}=await sb.functions.invoke('praise-finalise',{body:{action:'compute',period:fp,attendance:fatt}});setFbusy(false);if(error||(data&&data.error)){setFmsg((data&&data.error)||(error&&error.message)||'Error');return}setFprev(data)}
+  async function publish(){if(!fprev)return;if(!window.confirm('Publish results for '+fp+'?\n\nThis replaces any saved results for that month — it is what the collation and certificates show.'))return;setFbusy(true);const {data,error}=await sb.functions.invoke('praise-finalise',{body:{action:'publish',period:fp,attendance:fatt}});setFbusy(false);if(error||(data&&data.error)){setFmsg((data&&data.error)||(error&&error.message)||'Error');return}setFprev(null);setFmsg('Published '+((data&&data.published)||0)+' results for '+fp+' ✓');setPeriod(fp);load(fp)}
   const mlbl=p=>{const[y,m]=p.split('-');return new Date(+y,+m-1,1).toLocaleDateString('en-GB',{month:'short',year:'numeric'})}
-  const s=d.summary;const hasRows=d.rows&&d.rows.length>0
   const medal=a=>a==='Gold'?{bg:'#EFE4C4',fg:'#6B5212',t:'🥇 Gold'}:a==='Silver'?{bg:'#E9ECEF',fg:'#565C64',t:'🥈 Silver'}:a==='Bronze'?{bg:'#F0E0CE',fg:'#6E4517',t:'🥉 Bronze'}:{bg:'#F4F3EE',fg:C.muted,t:'—'}
+  const finalisePanel=html`<div class="card" style=${{padding:'12px 14px',marginBottom:12,border:'1px solid '+C.gold,background:'#FCFAF3'}}>
+    <b class="serif" style=${{color:C.navy}}>Work out results</b>
+    <div class="muted" style=${{fontSize:11,marginTop:2}}>Builds the month's table from the scores entered. A <b>0</b> means "not taught" and is left out of the boy's average. Review the preview, then publish.</div>
+    <div style=${{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap',marginTop:8}}>
+      <input class="in" type="month" style=${{width:'auto',marginTop:0}} max=${curP} value=${fp} onInput=${e=>{if(e.target.value){setFp(e.target.value);setFprev(null)}}}/>
+      <label style=${{display:'flex',gap:6,alignItems:'center',fontSize:12,cursor:'pointer'}}><input type="checkbox" checked=${fatt} onChange=${e=>{setFatt(e.target.checked);setFprev(null)}}/>Include attendance</label>
+      <button class="chip" style=${{background:C.navy,color:'#fff',borderColor:C.navy}} disabled=${fbusy} onClick=${compute}>${fbusy&&!fprev?'Working…':'Work out '+mlbl(fp)}</button>
+    </div>
+    ${fprev?html`<div style=${{marginTop:10}}>
+      <div class="muted" style=${{fontSize:12,marginBottom:6}}>Preview — nothing saved yet. <b>${fprev.summary.pupils}</b> pupils · 🥇 ${fprev.summary.gold} · 🥈 ${fprev.summary.silver} · 🥉 ${fprev.summary.bronze}${fprev.summary.attendance?' · attendance included':' · no attendance'}.</div>
+      <div style=${{maxHeight:220,overflow:'auto',border:'1px solid '+C.line,borderRadius:10,marginBottom:8}}>${fprev.rows.slice(0,80).map(r=>html`<div key=${r.pupil_id} style=${{display:'flex',alignItems:'center',gap:8,padding:'5px 9px',borderTop:'1px solid #F2EFE6',fontSize:12}}><span style=${{minWidth:20,color:C.muted}}>${r.rank}</span><span style=${{flex:1,minWidth:0}}>${r.student_name} <span class="muted">${r.group_name}</span></span><b style=${{color:C.navy}}>${r.pct}%</b><span class="muted" style=${{minWidth:44,textAlign:'right'}}>${r.award||'—'}</span></div>`)}</div>
+      <button class="btn" style=${{background:C.green}} disabled=${fbusy} onClick=${publish}>${fbusy?'Publishing…':'✓ Publish '+mlbl(fp)+' results'}</button>
+      <button class="chip" style=${{marginLeft:8}} onClick=${()=>setFprev(null)}>Discard</button>
+    </div>`:''}
+    ${fmsg?html`<div style=${{fontSize:12,marginTop:8,color:C.green,fontWeight:600}}>${fmsg}</div>`:''}
+  </div>`
+  if(err)return html`<div><h2 class="serif" style=${{color:C.navy,marginTop:4}}>Praise points — collation</h2>${finalisePanel}<div class="card muted" style=${{padding:16}}>Couldn't load results: ${err}</div></div>`
+  if(!d)return html`<div class="muted">Loading results…</div>`
+  const s=d.summary;const hasRows=d.rows&&d.rows.length>0
   const delta=(s&&s.prev_avg!=null)?(s.avg_pct-s.prev_avg):null
   return html`<div>
     <h2 class="serif" style=${{color:C.navy,marginTop:4}}>Praise points — collation</h2>
-    <div style=${{display:'flex',gap:6,flexWrap:'wrap',margin:'8px 0 12px'}}>${d.periods.map(p=>html`<button key=${p} class="chip ${period===p?'on':''}" onClick=${()=>{setPeriod(p);load(p)}}>${mlbl(p)}</button>`)}</div>
+    ${finalisePanel}
+    ${d.periods.length?html`<div style=${{display:'flex',gap:6,flexWrap:'wrap',margin:'8px 0 12px'}}>${d.periods.map(p=>html`<button key=${p} class="chip ${period===p?'on':''}" onClick=${()=>{setPeriod(p);load(p)}}>${mlbl(p)}</button>`)}</div>`:html`<div class="card muted" style=${{padding:14,marginBottom:12}}>No results published yet. Use "Work out results" above, then publish.</div>`}
     ${hasRows?html`<div>
       <div style=${{display:'flex',gap:8,flexWrap:'wrap',marginBottom:10}}>
         <div class="card" style=${{flex:'1 1 110px',padding:'10px 12px',background:C.navy,color:'#fff',border:'none'}}><div style=${{fontSize:10,color:'#AEBAD0'}}>Class average</div><div class="serif" style=${{fontSize:22,fontWeight:700}}>${s.avg_pct}%</div>${delta!=null?html`<div style=${{fontSize:10,color:delta>=0?'#9BE3B4':'#F3B0A8'}}>${delta>=0?'▲':'▼'} ${Math.abs(delta).toFixed(1)} vs ${mlbl(s.prev_period)}</div>`:''}</div>
@@ -418,7 +438,7 @@ function PraiseCollation(){
       <div class="muted" style=${{fontSize:11,marginBottom:8}}>${s.awarded} of ${s.total} pupils earned a certificate this month. Gold 95–100% · Silver 90–94% · Bronze 85–89%.</div>
       <div class="lbl" style=${{marginBottom:4}}>By class (average %)</div>
       <div style=${{display:'flex',gap:6,flexWrap:'wrap',marginBottom:12}}>${s.groups.map(g=>html`<span key=${g.group} class="chip">${g.group} <b style=${{color:C.gold}}>${g.avg}%</b></span>`)}</div>
-    </div>`:html`<div class="card muted" style=${{padding:14,marginBottom:12}}>No praise points collated for ${mlbl(period)} yet — behaviour deductions for the month are shown below.</div>`}
+    </div>`:(d.periods.length?html`<div class="card muted" style=${{padding:14,marginBottom:12}}>No praise points collated for ${period?mlbl(period):'this month'} yet — behaviour deductions for the month are shown below.</div>`:'')}
     ${d.behaviour&&d.behaviour.length>0&&html`<div class="card" style=${{padding:'10px 12px',marginBottom:12,background:'#FCF3F0',border:'1px solid #F2C9C4'}}>
       <div style=${{fontWeight:700,color:C.urgent,marginBottom:6}}>Behaviour deductions this month — total −${d.behaviour_total} pts</div>
       ${d.behaviour.map(bx=>html`<div key=${bx.pupil_name} style=${{display:'flex',justifyContent:'space-between',alignItems:'center',fontSize:12,padding:'3px 0'}}>
