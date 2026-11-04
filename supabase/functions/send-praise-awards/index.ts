@@ -77,6 +77,8 @@ Deno.serve(async (req) => {
       const { data: r } = await svc.from("praise_results").select("pupil_id,student_name,award,pct").eq("period", period).eq("pupil_id", body.pupil_id).maybeSingle();
       if (!r || !AWARDS.includes(r.award)) return json({ error: "no award for this pupil" }, 400);
       const parents = await parentsFor(body.pupil_id);
+      const { data: exRows } = parents.length ? await svc.from("parent_extra_emails").select("parent_id,email").in("parent_id", parents.map((p: any) => p.id)) : { data: [] };
+      const extrasBy: Record<string, string[]> = {}; (exRows ?? []).forEach((e: any) => { (extrasBy[e.parent_id] = extrasBy[e.parent_id] || []).push(String(e.email)); });
 
       // decode + store the certificate
       const bin = atob(String(body.pdf_base64));
@@ -110,12 +112,19 @@ Deno.serve(async (req) => {
             for (const s of subs ?? []) { try { await webpush.sendNotification({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, payload); push++; } catch (e: any) { if (e?.statusCode === 404 || e?.statusCode === 410) await svc.from("push_subscriptions").delete().eq("endpoint", s.endpoint); } }
           }
         }
-        // email with the certificate attached
-        if (brevo && p.email) {
-          try {
-            const resp = await fetch("https://api.brevo.com/v3/smtp/email", { method: "POST", headers: { "api-key": brevo, "content-type": "application/json", accept: "application/json" }, body: JSON.stringify({ sender: { name: "Maulana Luqmān Amla", email: sender }, to: [{ email: p.email, name: p.full_name || "Parent" }], replyTo: { email: sender }, subject: `${r.award} Award for ${first(r.student_name)} — Praise Points (${month})`, htmlContent: html, attachment: [{ content: String(body.pdf_base64), name: fileName }] }) });
-            if (resp.ok) emails++;
-          } catch (_) { /* continue */ }
+        // email the certificate to the parent's address(es): profile email + any extra emails
+        const addrs = new Set<string>();
+        if (p.email) addrs.add(String(p.email).trim());
+        (extrasBy[p.id] || []).forEach((e) => { if (e) addrs.add(String(e).trim()); });
+        if (brevo) {
+          const seen = new Set<string>();
+          for (const addr of addrs) {
+            const key = addr.toLowerCase(); if (!addr || seen.has(key)) continue; seen.add(key);
+            try {
+              const resp = await fetch("https://api.brevo.com/v3/smtp/email", { method: "POST", headers: { "api-key": brevo, "content-type": "application/json", accept: "application/json" }, body: JSON.stringify({ sender: { name: "Maulana Luqmān Amla", email: sender }, to: [{ email: addr, name: p.full_name || "Parent" }], replyTo: { email: sender }, subject: `${r.award} Award for ${first(r.student_name)} — Praise Points (${month})`, htmlContent: html, attachment: [{ content: String(body.pdf_base64), name: fileName }] }) });
+              if (resp.ok) emails++;
+            } catch (_) { /* continue */ }
+          }
         }
       }
       await svc.from("praise_award_sends").upsert({ period, pupil_id: body.pupil_id, award: r.award, parents: parents.length, emails, push, sent_by: user.id, sent_at: new Date().toISOString() }, { onConflict: "period,pupil_id" });
