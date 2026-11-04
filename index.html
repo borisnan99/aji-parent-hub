@@ -398,6 +398,7 @@ function PraiseCollation(){
   const curP=new Date().toISOString().slice(0,7)
   const [d,setD]=useState(null);const [period,setPeriod]=useState(null);const [err,setErr]=useState('')
   const [fp,setFp]=useState(curP);const [fatt,setFatt]=useState(true);const [fprev,setFprev]=useState(null);const [fbusy,setFbusy]=useState(false);const [fmsg,setFmsg]=useState('')
+  const [cbusy,setCbusy]=useState(false);const [cmsg,setCmsg]=useState('')
   async function load(p){setD(null);const {data,error}=await sb.functions.invoke('praise-collation',{body:p?{period:p}:{}});if(error||(data&&data.error)){setErr((data&&data.error)||error.message);return}setErr('');setD(data);setPeriod(data.period)}
   useEffect(()=>{load()},[])
   async function compute(){setFbusy(true);setFmsg('');setFprev(null);const {data,error}=await sb.functions.invoke('praise-finalise',{body:{action:'compute',period:fp,attendance:fatt}});setFbusy(false);if(error||(data&&data.error)){setFmsg((data&&data.error)||(error&&error.message)||'Error');return}setFprev(data)}
@@ -419,6 +420,48 @@ function PraiseCollation(){
     lines.push(esc('Please note: a dash (–) means the boy is not taught that lesson, so it is left out of his average. Behaviour C-codes are taken off the total points before the percentage. Gold 95–100%, Silver 90–94%, Bronze 85–89%.'))
     const blob=new Blob(['﻿'+lines.join('\n')],{type:'text/csv;charset=utf-8'})
     const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='Praise_results_'+fp+'.csv';document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},0)
+  }
+  async function logoDataUrl(){
+    try{const r=await fetch('/logo.png');const b=await r.blob();return await new Promise(res=>{const fr=new FileReader();fr.onload=()=>res(fr.result);fr.onerror=()=>res(null);fr.readAsDataURL(b)})}catch(e){return null}
+  }
+  async function makeCertificates(rows,per){
+    const winners=(rows||[]).filter(r=>['Gold','Silver','Bronze'].includes(r.award))
+    if(!winners.length){setCmsg('No award-winners for '+mlbl(per)+' yet.');return}
+    setCbusy(true);setCmsg('Building '+winners.length+' certificates…')
+    try{
+      const mod=await import('https://esm.sh/jspdf@2.5.1');const JS=mod.jsPDF||mod.default
+      const logo=await logoDataUrl()
+      const navy=[31,42,77],gold=[184,145,47],ink=[34,34,34],muted=[120,120,120]
+      const tierCol={Gold:[184,145,47],Silver:[122,128,138],Bronze:[150,101,56]}
+      const [yy,mm]=per.split('-');const full=new Date(+yy,+mm-1,1).toLocaleDateString('en-GB',{month:'long',year:'numeric'})
+      const doc=new JS({orientation:'landscape',unit:'pt',format:'a4'})
+      const W=doc.internal.pageSize.getWidth(),H=doc.internal.pageSize.getHeight()
+      winners.forEach((r,i)=>{
+        if(i>0)doc.addPage()
+        doc.setFillColor(255,255,255);doc.rect(0,0,W,H,'F')
+        doc.setDrawColor(navy[0],navy[1],navy[2]);doc.setLineWidth(3);doc.rect(26,26,W-52,H-52)
+        doc.setDrawColor(gold[0],gold[1],gold[2]);doc.setLineWidth(1);doc.rect(38,38,W-76,H-76)
+        if(logo){const lw=230,lh=lw*427/1000;doc.addImage(logo,'PNG',(W-lw)/2,66,lw,lh)}
+        else{doc.setFont('times','bold');doc.setFontSize(20);doc.setTextColor(navy[0],navy[1],navy[2]);doc.text('Al Jamiatul Islamiyah',W/2,120,{align:'center'})}
+        doc.setFont('times','bold');doc.setFontSize(25);doc.setTextColor(gold[0],gold[1],gold[2]);doc.text('CERTIFICATE OF ACHIEVEMENT',W/2,210,{align:'center'})
+        doc.setFont('helvetica','normal');doc.setFontSize(12);doc.setTextColor(muted[0],muted[1],muted[2]);doc.text('This is proudly presented to',W/2,244,{align:'center'})
+        const nm=String(r.student_name||'');doc.setFont('times','bolditalic');doc.setFontSize(nm.length>24?30:40);doc.setTextColor(navy[0],navy[1],navy[2]);doc.text(nm,W/2,300,{align:'center'})
+        doc.setDrawColor(gold[0],gold[1],gold[2]);doc.setLineWidth(1);doc.line(W/2-150,318,W/2+150,318)
+        doc.setFont('helvetica','normal');doc.setFontSize(13);doc.setTextColor(ink[0],ink[1],ink[2])
+        doc.text('for outstanding effort in the monthly Praise Points for '+full,W/2,352,{align:'center'})
+        const tc=tierCol[r.award]||navy;doc.setFont('times','bold');doc.setFontSize(20);doc.setTextColor(tc[0],tc[1],tc[2])
+        doc.text(r.award.toUpperCase()+' AWARD   ·   '+r.pct+'%',W/2,398,{align:'center'})
+        doc.setFont('helvetica','normal');doc.setFontSize(11);doc.setTextColor(muted[0],muted[1],muted[2]);doc.text('Ranked '+r.rank+' of the month'+(r.group_name?'  ·  '+r.group_name:'')+(r.year?'  ·  '+r.year:''),W/2,418,{align:'center'})
+        const sy=500;doc.setDrawColor(navy[0],navy[1],navy[2]);doc.setLineWidth(0.8)
+        doc.line(170,sy,350,sy);doc.line(W-350,sy,W-170,sy)
+        doc.setFont('helvetica','normal');doc.setFontSize(10);doc.setTextColor(muted[0],muted[1],muted[2])
+        doc.text('Head of Islamic Studies',260,sy+15,{align:'center'});doc.text('Principal',W-260,sy+15,{align:'center'})
+        doc.setFont('times','normal');doc.setFontSize(11);doc.setTextColor(navy[0],navy[1],navy[2]);doc.text('Al Jamiatul Islamiyah  ·  Bolton Darul Uloom',W/2,H-56,{align:'center'})
+      })
+      doc.save('AJI_Certificates_'+per+'.pdf')
+      setCmsg(winners.length+' certificates saved for '+mlbl(per)+' ✓')
+    }catch(e){setCmsg('Could not build certificates: '+(e&&e.message||e))}
+    setCbusy(false)
   }
   const finalisePanel=html`<div class="card" style=${{padding:'12px 14px',marginBottom:12,border:'1px solid '+C.gold,background:'#FCFAF3'}}>
     <b class="serif" style=${{color:C.navy}}>Work out results</b>
@@ -453,6 +496,10 @@ function PraiseCollation(){
         <div class="card" style=${{flex:'1 1 70px',padding:'10px 12px',textAlign:'center'}}><div style=${{fontSize:20}}>🥉</div><div class="serif" style=${{fontSize:18,fontWeight:700,color:C.navy}}>${s.bronze}</div><div class="muted" style=${{fontSize:10}}>Bronze</div></div>
       </div>
       <div class="muted" style=${{fontSize:11,marginBottom:8}}>${s.awarded} of ${s.total} pupils earned a certificate this month. Gold 95–100% · Silver 90–94% · Bronze 85–89%.</div>
+      <div style=${{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap',marginBottom:12}}>
+        <button class="chip" style=${{background:C.gold,color:'#fff',borderColor:C.gold}} disabled=${cbusy||!s.awarded} onClick=${()=>makeCertificates(d.rows,period)}>${cbusy?'Building…':'🏅 Certificates PDF ('+s.awarded+')'}</button>
+        ${cmsg?html`<span style=${{fontSize:12,color:cmsg.indexOf('Could not')>=0?C.urgent:C.green,fontWeight:600}}>${cmsg}</span>`:''}
+      </div>
       <div class="lbl" style=${{marginBottom:4}}>By class (average %)</div>
       <div style=${{display:'flex',gap:6,flexWrap:'wrap',marginBottom:12}}>${s.groups.map(g=>html`<span key=${g.group} class="chip">${g.group} <b style=${{color:C.gold}}>${g.avg}%</b></span>`)}</div>
     </div>`:(d.periods.length?html`<div class="card muted" style=${{padding:14,marginBottom:12}}>No praise points collated for ${period?mlbl(period):'this month'} yet — behaviour deductions for the month are shown below.</div>`:'')}
