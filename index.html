@@ -404,6 +404,22 @@ function PraiseCollation(){
   async function publish(){if(!fprev)return;if(!window.confirm('Publish results for '+fp+'?\n\nThis replaces any saved results for that month — it is what the collation and certificates show.'))return;setFbusy(true);const {data,error}=await sb.functions.invoke('praise-finalise',{body:{action:'publish',period:fp,attendance:fatt}});setFbusy(false);if(error||(data&&data.error)){setFmsg((data&&data.error)||(error&&error.message)||'Error');return}setFprev(null);setFmsg('Published '+((data&&data.published)||0)+' results for '+fp+' ✓');setPeriod(fp);load(fp)}
   const mlbl=p=>{const[y,m]=p.split('-');return new Date(+y,+m-1,1).toLocaleDateString('en-GB',{month:'short',year:'numeric'})}
   const medal=a=>a==='Gold'?{bg:'#EFE4C4',fg:'#6B5212',t:'🥇 Gold'}:a==='Silver'?{bg:'#E9ECEF',fg:'#565C64',t:'🥈 Silver'}:a==='Bronze'?{bg:'#F0E0CE',fg:'#6E4517',t:'🥉 Bronze'}:{bg:'#F4F3EE',fg:C.muted,t:'—'}
+  function downloadSheet(){
+    if(!fprev)return
+    const cols=fprev.columns||[]
+    const esc=v=>{const s=(v==null?'':String(v));return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s}
+    const header=['Rank','Student','Year','Group','Attendance',...cols.map(c=>c.label),'Positive Total','Deductions','Final Total','Maximum Available Points','Percentage','Award']
+    const lines=[esc('Praise results — '+mlbl(fp)+(fprev.summary.attendance?' (attendance included)':' (no attendance)')),header.map(esc).join(',')]
+    fprev.rows.forEach(r=>{
+      const cs=cols.map(c=>{const v=r.cells?r.cells[c.key]:undefined;return (v!=null&&Number(v)>0)?v:'–'})
+      const line=[r.rank,r.student_name,r.year,r.group_name,(r.attendance==null?'–':r.attendance),...cs,r.positive_total,(r.deductions?('-'+r.deductions):0),r.final_total,r.max_points,r.pct+'%',r.award||'']
+      lines.push(line.map(esc).join(','))
+    })
+    lines.push('')
+    lines.push(esc('Please note: a dash (–) means the boy is not taught that lesson, so it is left out of his average. Behaviour C-codes are taken off the total points before the percentage. Gold 95–100%, Silver 90–94%, Bronze 85–89%.'))
+    const blob=new Blob(['﻿'+lines.join('\n')],{type:'text/csv;charset=utf-8'})
+    const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='Praise_results_'+fp+'.csv';document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},0)
+  }
   const finalisePanel=html`<div class="card" style=${{padding:'12px 14px',marginBottom:12,border:'1px solid '+C.gold,background:'#FCFAF3'}}>
     <b class="serif" style=${{color:C.navy}}>Work out results</b>
     <div class="muted" style=${{fontSize:11,marginTop:2}}>Builds the month's table from the scores entered. A <b>0</b> means "not taught" and is left out of the boy's average. Review the preview, then publish.</div>
@@ -413,9 +429,10 @@ function PraiseCollation(){
       <button class="chip" style=${{background:C.navy,color:'#fff',borderColor:C.navy}} disabled=${fbusy} onClick=${compute}>${fbusy&&!fprev?'Working…':'Work out '+mlbl(fp)}</button>
     </div>
     ${fprev?html`<div style=${{marginTop:10}}>
-      <div class="muted" style=${{fontSize:12,marginBottom:6}}>Preview — nothing saved yet. <b>${fprev.summary.pupils}</b> pupils · 🥇 ${fprev.summary.gold} · 🥈 ${fprev.summary.silver} · 🥉 ${fprev.summary.bronze}${fprev.summary.attendance?' · attendance included':' · no attendance'}.</div>
-      <div style=${{maxHeight:220,overflow:'auto',border:'1px solid '+C.line,borderRadius:10,marginBottom:8}}>${fprev.rows.slice(0,80).map(r=>html`<div key=${r.pupil_id} style=${{display:'flex',alignItems:'center',gap:8,padding:'5px 9px',borderTop:'1px solid #F2EFE6',fontSize:12}}><span style=${{minWidth:20,color:C.muted}}>${r.rank}</span><span style=${{flex:1,minWidth:0}}>${r.student_name} <span class="muted">${r.group_name}</span></span><b style=${{color:C.navy}}>${r.pct}%</b><span class="muted" style=${{minWidth:44,textAlign:'right'}}>${r.award||'—'}</span></div>`)}</div>
+      <div class="muted" style=${{fontSize:12,marginBottom:6}}>Preview — nothing saved yet. <b>${fprev.summary.pupils}</b> pupils · 🥇 ${fprev.summary.gold} · 🥈 ${fprev.summary.silver} · 🥉 ${fprev.summary.bronze}${fprev.summary.attendance?' · attendance included':' · no attendance'}${fprev.summary.with_deductions?' · '+fprev.summary.with_deductions+' with behaviour deductions':''}.</div>
+      <div style=${{maxHeight:220,overflow:'auto',border:'1px solid '+C.line,borderRadius:10,marginBottom:8}}>${fprev.rows.slice(0,80).map(r=>html`<div key=${r.pupil_id} style=${{display:'flex',alignItems:'center',gap:8,padding:'5px 9px',borderTop:'1px solid #F2EFE6',fontSize:12}}><span style=${{minWidth:20,color:C.muted}}>${r.rank}</span><span style=${{flex:1,minWidth:0}}>${r.student_name} <span class="muted">${r.group_name}</span></span>${r.deductions>0?html`<span title="behaviour deduction" style=${{color:C.urgent,fontSize:11}}>−${r.deductions}</span>`:''}<b style=${{color:C.navy}}>${r.pct}%</b><span class="muted" style=${{minWidth:44,textAlign:'right'}}>${r.award||'—'}</span></div>`)}</div>
       <button class="btn" style=${{background:C.green}} disabled=${fbusy} onClick=${publish}>${fbusy?'Publishing…':'✓ Publish '+mlbl(fp)+' results'}</button>
+      <button class="chip" style=${{marginLeft:8}} onClick=${downloadSheet}>⬇ Spreadsheet (every teacher's score)</button>
       <button class="chip" style=${{marginLeft:8}} onClick=${()=>setFprev(null)}>Discard</button>
     </div>`:''}
     ${fmsg?html`<div style=${{fontSize:12,marginTop:8,color:C.green,fontWeight:600}}>${fmsg}</div>`:''}

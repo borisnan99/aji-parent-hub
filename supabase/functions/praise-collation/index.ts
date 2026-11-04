@@ -43,12 +43,11 @@ Deno.serve(async (req) => {
     const nameToPid: Record<string, string> = {};
     pids.forEach((id) => { const p = pmap[id]; if (p) nameToPid[norm(`${p.first_name} ${p.last_name}`)] = id; });
 
+    // Behaviour C-code deductions are now baked into the stored results (final_total / pct)
+    // by praise-finalise, so we DO NOT subtract them again here — we just surface what was applied.
     const rows2 = (rows ?? []).map((r: any) => {
-      const pid = r.pupil_id || nameToPid[norm(r.student_name)] || null;
-      const b = pid ? perPupil[pid] : null; const bpts = b ? b.points : 0;
-      const finalNet = Number(r.final_total || 0) - bpts;
-      const net_pct = r.max_points ? +((finalNet / Number(r.max_points)) * 100).toFixed(1) : Number(r.pct || 0);
-      return { ...r, behaviour_points: bpts, net_pct };
+      const bpts = Number(r.deductions || 0);
+      return { ...r, behaviour_points: bpts, net_pct: Number(r.pct || 0) };
     });
 
     const awarded = rows2.filter((r: any) => ["Gold", "Silver", "Bronze"].includes(r.award));
