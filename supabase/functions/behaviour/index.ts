@@ -34,7 +34,7 @@ Deno.serve(async (req) => {
     }
     async function pupnames(ids: string[]): Promise<Record<string, any>> {
       const u = [...new Set(ids.filter(Boolean))]; const m: Record<string, any> = {};
-      if (u.length) { const { data } = await svc.from("pupils").select("id,first_name,last_name,academic_year").in("id", u); (data ?? []).forEach((r: any) => (m[r.id] = r)); }
+      if (u.length) { const { data } = await svc.from("pupils").select("id,first_name,last_name,academic_year,morning_class").in("id", u); (data ?? []).forEach((r: any) => (m[r.id] = r)); }
       return m;
     }
     async function signed(path: string | null): Promise<string | null> {
@@ -155,6 +155,27 @@ Deno.serve(async (req) => {
         await svc.from("detentions").update({ notified_at: new Date().toISOString() }).eq("id", det.id);
       } catch { /* notify best-effort */ }
       return json({ ok: true, detention_date: satStr });
+    }
+
+    if (action === "export") {
+      if (!canReview) return json({ error: "not permitted" }, 403);
+      const period = (String(body.month || "")).slice(0, 7) || new Date().toISOString().slice(0, 7);
+      const from = period + "-01";
+      const d0 = new Date(from + "T00:00:00Z");
+      const next = new Date(Date.UTC(d0.getUTCFullYear(), d0.getUTCMonth() + 1, 1)).toISOString().slice(0, 10);
+      const { data: incs } = await svc.from("behaviour_incidents").select("*").gte("created_at", from).lt("created_at", next).order("created_at", { ascending: true });
+      const listRows = incs ?? [];
+      const pm = await pupnames(listRows.map((r: any) => r.pupil_id));
+      const nmap = await names(listRows.flatMap((r: any) => [r.logged_by, r.reviewed_by]));
+      const { data: codeRows } = await svc.from("behaviour_codes").select("code,action,deduction_points");
+      const cmap: Record<string, any> = {}; (codeRows ?? []).forEach((c: any) => (cmap[c.code] = c));
+      const rows = listRows.map((r: any) => {
+        const p = pm[r.pupil_id] || {}; const c = cmap[r.code] || {};
+        return { created_at: r.created_at, reviewed_at: r.reviewed_at, lesson: r.period, pupil: p.first_name ? `${p.first_name} ${p.last_name}`.trim() : "", year: p.academic_year || "", class: p.morning_class || "", code: r.code, points_off: c.deduction_points || 0, reason: r.reason || "", details: r.details || "", status: r.status || "", pupil_statement: r.pupil_statement || "", reviewed_by: r.reviewed_by ? (nmap[r.reviewed_by] || "") : "", logged_by: nmap[r.logged_by] || "", code_meaning: c.action || "" };
+      });
+      const { data: allDates } = await svc.from("behaviour_incidents").select("created_at");
+      const months = [...new Set((allDates ?? []).map((r: any) => String(r.created_at).slice(0, 7)))].sort().reverse();
+      return json({ ok: true, period, months, rows });
     }
 
     return json({ error: "unknown action" }, 400);

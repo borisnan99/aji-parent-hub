@@ -1226,6 +1226,7 @@ function Behaviour({profile}){
   const [period,setPeriod]=useState('');const [code,setCode]=useState('');const [reason,setReason]=useState('');const [reasonOther,setReasonOther]=useState('');const [details,setDetails]=useState('')
   const [busy,setBusy]=useState(false);const [toast,setToast]=useState('')
   const [openId,setOpenId]=useState(null);const [drafts,setDrafts]=useState({})
+  const [exMonths,setExMonths]=useState([]);const [exMonth,setExMonth]=useState('');const [exBusy,setExBusy]=useState(false);const [exMsg,setExMsg]=useState('')
   const fire=m=>{setToast(m);setTimeout(()=>setToast(''),3800)}
   async function load(){const {data,error}=await sb.functions.invoke('behaviour',{body:{action:'load'}});if(error||(data&&data.error)){fire((data&&data.error)||'Error loading');return}setCodes(data.codes||[]);setMine(data.mine||[]);setQueue(data.queue||[]);setHistory(data.history||[]);setCanReview(!!data.can_review)}
   async function loadPupils(){const {data}=await sb.from('pupils').select('id,first_name,last_name,academic_year,is_active').order('last_name');setPupils((data||[]).filter(p=>p.is_active!==false))}
@@ -1256,6 +1257,24 @@ function Behaviour({profile}){
   async function assignDetention(id){const {data,error}=await sb.functions.invoke('behaviour',{body:{action:'detention',id}})
     if(error||(data&&data.error)){fire((data&&data.error)||'Error');return}
     fire('Saturday detention set · parents notified');load()}
+  const curMonth=new Date().toLocaleDateString('en-CA').slice(0,7)
+  const mlab=p=>{if(!p)return '';const [y,m]=p.split('-');return new Date(+y,+m-1,1).toLocaleDateString('en-GB',{month:'long',year:'numeric'})}
+  async function initExport(){const {data}=await sb.functions.invoke('behaviour',{body:{action:'export',month:curMonth}});if(data&&data.months){setExMonths(data.months);setExMonth(data.months[0]||curMonth)}}
+  useEffect(()=>{if(mode==='history'&&canReview&&!exMonths.length)initExport()},[mode,canReview])
+  async function downloadBehaviourCSV(){if(!exMonth)return;setExBusy(true);setExMsg('')
+    const {data,error}=await sb.functions.invoke('behaviour',{body:{action:'export',month:exMonth}})
+    setExBusy(false)
+    if(error||(data&&data.error)){setExMsg((data&&data.error)||'Error');return}
+    const rows=data.rows||[]
+    const esc=v=>{const s=(v==null?'':String(v));return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s}
+    const dOf=s=>s?new Date(s).toLocaleDateString('en-GB',{day:'2-digit',month:'2-digit',year:'numeric'}):''
+    const tOf=s=>s?new Date(s).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}):''
+    const header=['Month','Date','Time','Lesson period','Pupil','Year','Class','Code','Points off','Reason','Details','Status','Pupil statement','Reviewed on','Reviewed by','Logged by','Code meaning']
+    const lines=[header.map(esc).join(',')]
+    rows.forEach(r=>{lines.push([exMonth,dOf(r.created_at),tOf(r.created_at),r.lesson,r.pupil,r.year,r.class,r.code,r.points_off,r.reason,r.details,r.status,r.pupil_statement,dOf(r.reviewed_at),r.reviewed_by,r.logged_by,r.code_meaning].map(esc).join(','))})
+    const blob=new Blob(['﻿'+lines.join('\n')],{type:'text/csv;charset=utf-8'})
+    const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='AJI_Behaviour_'+exMonth+'.csv';document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},0)
+    setExMsg(rows.length+' incident'+(rows.length===1?'':'s')+' downloaded ✓')}
   const list=(pupils||[]).filter(p=>(p.first_name+' '+p.last_name).toLowerCase().includes(q.toLowerCase())).slice(0,8)
   const fmt=d=>d?new Date(d).toLocaleDateString('en-GB',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}):''
   const badge=st=>st==='confirmed'?{bg:'#E5EEE7',fg:C.green,t:'Confirmed'}:st==='dismissed'?{bg:'#EDEAE2',fg:C.muted,t:'Dismissed'}:{bg:'#FBECC9',fg:'#8A6D1B',t:'Pending'}
@@ -1319,10 +1338,18 @@ function Behaviour({profile}){
     </div>`}
 
     ${mode==='history'&&canReview&&html`<div>
+      <div class="card" style=${{padding:'10px 12px',marginBottom:10,display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
+        <b style=${{fontSize:13,color:C.navy}}>🗓 Monthly export</b>
+        <select class="in" style=${{width:'auto',flex:'0 0 auto'}} value=${exMonth} onChange=${e=>{setExMonth(e.target.value);setExMsg('')}}>${(exMonths.length?exMonths:[curMonth]).map(m=>html`<option key=${m} value=${m}>${mlab(m)}</option>`)}</select>
+        <button class="chip" style=${{background:C.navy,color:'#fff',borderColor:C.navy}} disabled=${exBusy||!exMonth} onClick=${downloadBehaviourCSV}>${exBusy?'Preparing…':'⬇ Download CSV'}</button>
+        ${exMsg?html`<span class="muted" style=${{fontSize:11,color:exMsg.indexOf('✓')>=0?C.green:C.urgent}}>${exMsg}</span>`:''}
+        <div class="muted" style=${{fontSize:11,width:'100%'}}>Every incident that month — date, pupil, code, reason, details, status and more — as a CSV.</div>
+      </div>
       ${history.length===0&&html`<div class="card muted" style=${{padding:16}}>No reviewed incidents yet.</div>`}
       ${history.map(i=>{const b=badge(i.status);return html`<div key=${i.id} class="card" style=${{padding:'10px 12px',marginBottom:8}}>
         <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center'}}><div style=${{display:'flex',gap:8,alignItems:'center'}}>${codeTag(i.code)}<b>${i.pupil_name}</b></div><span class="tag" style=${{background:b.bg,color:b.fg,padding:'3px 9px'}}>${b.t}</span></div>
-        <div class="muted" style=${{fontSize:12,marginTop:4}}>Period ${i.period} · ${i.reason} · logged by ${i.logged_by_name}${i.reviewed_by_name?' · reviewed by '+i.reviewed_by_name:''}</div>
+        <div class="muted" style=${{fontSize:11,marginTop:3}}>📅 ${fmt(i.created_at)}${i.reviewed_at?' · reviewed '+fmt(i.reviewed_at):''}</div>
+        <div class="muted" style=${{fontSize:12,marginTop:3}}>Period ${i.period} · ${i.reason} · logged by ${i.logged_by_name}${i.reviewed_by_name?' · reviewed by '+i.reviewed_by_name:''}</div>
         ${i.pupil_statement&&html`<div style=${{fontSize:13,marginTop:6,background:'#FAF8F3',padding:'6px 10px',borderRadius:6,whiteSpace:'pre-wrap'}}><b style=${{fontSize:11}}>Statement:</b> ${i.pupil_statement}</div>`}
         ${i.photo_url&&html`<div style=${{marginTop:6}}><a href=${i.photo_url} target="_blank" style=${{color:C.navy,fontSize:12,fontWeight:600}}>📷 View handwritten statement</a></div>`}
         ${i.status==='confirmed'&&!i.detention&&html`<button class="btn" style=${{marginTop:10}} onClick=${()=>assignDetention(i.id)}>Assign Saturday detention</button>`}
