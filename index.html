@@ -1946,7 +1946,7 @@ function DataProtection({profile}){
 function Dashboard({profile,onSignOut}){
   const [pupils,setPupils]=useState(null);const [classes,setClasses]=useState([]);const [groups,setGroups]=useState([])
   const [anns,setAnns]=useState([]);const [tab,setTab]=useState('overview');const [q,setQ]=useState('');const [toast,setToast]=useState('')
-  const [editPupil,setEditPupil]=useState(null);const canManage=profile.role==='admin';const canIncident=canReportIncident(profile);const canBoarding=canBoardingCheck(profile)||canBoardingDamage(profile);const canSup=canSupervisor(profile);const canMedFire=canBoardTeam(profile);const canKit=canKitchen(profile)
+  const [editPupil,setEditPupil]=useState(null);const canManage=profile.role==='admin';const canIncident=canReportIncident(profile);const canBoarding=canBoardingCheck(profile)||canBoardingDamage(profile);const canSup=canSupervisor(profile);const canMedFire=canBoardTeam(profile);const canKit=canKitchen(profile);const [examAccess,setExamAccess]=useState(false)
   const fire=m=>{setToast(m);setTimeout(()=>setToast(''),3200)}
   async function load(){const [p,c,g,a]=await Promise.all([
     sb.from('pupils').select('*').order('last_name'),
@@ -1955,6 +1955,7 @@ function Dashboard({profile,onSignOut}){
     sb.from('announcements').select('*').order('created_at',{ascending:false}).limit(10)])
     setPupils(p.data||[]);setClasses(c.data||[]);setGroups(g.data||[]);setAnns(a.data||[])}
   useEffect(()=>{load()},[])
+  useEffect(()=>{sb.functions.invoke('send-weekly-results',{body:{action:'my_exam_access'}}).then(({data})=>{if(data&&!data.error&&(data.can_send||(data.classes||[]).length))setExamAccess(true)}).catch(()=>{})},[])
   const total=pupils?pupils.filter(p=>p.is_active!==false).length:0
   const boarders=pupils?pupils.filter(p=>p.boarding_status==='Boarding'&&p.is_active!==false).length:0
   const groupSize=g=>{if(!pupils)return 0;if(g.kind==='all')return total
@@ -1969,7 +1970,7 @@ function Dashboard({profile,onSignOut}){
         <div style=${{color:'#AEBAD0',fontSize:10}}>Al Jamiatul Islamiyah</div></div></div>
       <button onClick=${onSignOut} style=${{background:'transparent',border:'1px solid rgba(255,255,255,.3)',color:'#fff',borderRadius:10,padding:'6px 10px',fontSize:12,cursor:'pointer'}}>Sign out</button></div>
     <div style=${{height:3,background:`linear-gradient(90deg,${C.gold},${C.goldSoft})`}}></div>
-    <div style=${{padding:'8px 16px 0',display:'flex',gap:8,flexWrap:'wrap'}}>${['overview','notices','pupils','attendance','league',...(canManage?['engagement']:[]),'praise','detentions','behaviour','safeguarding',...(canMedFire?['medical','firedrills']:[]),...(canIncident?['incidents']:[]),...(canBoarding?['boarding']:[]),...(canSup?['supervisor']:[]),...(canKit?['kitchen']:[]),...(canManage?['marks','dataprotection','users']:[]),'announce','inbox'].map(t=>html`
+    <div style=${{padding:'8px 16px 0',display:'flex',gap:8,flexWrap:'wrap'}}>${['overview','notices','pupils','attendance','league',...(canManage?['engagement']:[]),'praise','detentions','behaviour','safeguarding',...(canMedFire?['medical','firedrills']:[]),...(canIncident?['incidents']:[]),...(canBoarding?['boarding']:[]),...(canSup?['supervisor']:[]),...(canKit?['kitchen']:[]),...((canManage||examAccess)?['marks']:[]),...(canManage?['dataprotection','users']:[]),'announce','inbox'].map(t=>html`
       <button key=${t} onClick=${()=>setTab(t)} class="chip ${tab===t?'on':''}">${t==='overview'?'Overview':t==='notices'?'Notices':t==='pupils'?'Pupils':t==='attendance'?'Attendance':t==='league'?'League':t==='engagement'?'Engagement':t==='praise'?'Praise':t==='detentions'?'Detentions':t==='behaviour'?'Behaviour':t==='safeguarding'?'Safeguarding':t==='medical'?'Medical':t==='firedrills'?'Fire drills':t==='incidents'?'Injuries':t==='boarding'?'Boarding':t==='supervisor'?'Supervisor':t==='kitchen'?'Kitchen':t==='marks'?'Exam marks':t==='dataprotection'?'Data protection':t==='users'?'Users':t==='announce'?'Announce':'Inbox'}</button>`)}</div>
     <div style=${{padding:16}}>
       ${pupils===null&&html`<div class="muted">Loading live data…</div>`}
@@ -2014,7 +2015,7 @@ function Dashboard({profile,onSignOut}){
       ${tab==='kitchen'&&canKit&&html`<${Kitchen} profile=${profile}/>`}
       ${tab==='dataprotection'&&canManage&&html`<${DataProtection} profile=${profile}/>`}
       ${tab==='users'&&canManage&&html`<${Users} profile=${profile}/>`}
-      ${tab==='marks'&&canManage&&html`<${WeeklyMarks} profile=${profile}/>`}
+      ${tab==='marks'&&(canManage||examAccess)&&html`<${WeeklyMarks} profile=${profile}/>`}
       ${tab==='notices'&&html`<${StaffNotices} profile=${profile}/>`}
       ${editPupil&&html`<${PupilEditor} pupil=${editPupil} classes=${classes} onClose=${()=>setEditPupil(null)} onSaved=${m=>{setEditPupil(null);fire(m);load()}}/>`}
     </div>
@@ -2575,7 +2576,11 @@ function WeeklyMarks({profile}){
   const friLabel=d=>'Fri '+d.getDate()+' '+MON[d.getMonth()]
   const friISO=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')
   const fmtWhen=s=>{try{return new Date(s).toLocaleString('en-GB',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})}catch(_){return ''}}
+  const CLABEL={is:'Islamic Studies',ph:'Pre-Hifz'}
   const thisFri=mrFri(new Date())
+  const [myClasses,setMyClasses]=useState(null)
+  const [canSend,setCanSend]=useState(false)
+  const [editable,setEditable]=useState([])
   const [cls,setCls]=useState('is')
   const [fri,setFri]=useState(()=>mrFri(new Date()))
   const [data,setData]=useState(null)
@@ -2591,23 +2596,28 @@ function WeeklyMarks({profile}){
   const fire=m=>{setToast(m);setTimeout(()=>setToast(''),4200)}
   const sk=cls+'|'+friISO(fri)
   const wlabel=friLabel(fri)
+  useEffect(()=>{sb.functions.invoke('send-weekly-results',{body:{action:'my_exam_access'}}).then(({data:r})=>{
+    if(r&&!r.error){ if(r.full){setMyClasses(['is','ph'])} else {const cs=(r.classes||[]).map(c=>c.class_code);setMyClasses(cs.length?cs:[]);if(cs.length&&!cs.includes(cls))setCls(cs[0])} }
+    else setMyClasses(['is','ph'])
+  }).catch(()=>setMyClasses(['is','ph']))},[])
   async function load(){
     setBusy('load');setPreview(null);setSent(null)
     const key=cls+'|'+friISO(fri)
     const {data:r,error}=await sb.functions.invoke('send-weekly-results',{body:{action:'roster',class_code:cls,send_key:key,week_label:friLabel(fri)}})
     setBusy('')
     if(error||(r&&r.error)){fire((r&&r.error)||'Could not load class');setData({boys:[],subjects:[]});return}
-    setData(r)
+    setData(r);setEditable(r.editable||[]);setCanSend(!!r.can_send)
     const m={},f={},np={};const dr=r.draft
     if(dr){Object.entries(dr.marks_by||{}).forEach(([pid,v])=>{m[pid]=v.marks||{};f[pid]=v.focus||'';np[pid]=!!v.no_paper})}
     setMarks(m);setFocus(f);setNopaper(np)
     setSentAt((dr&&dr.sent_at)||null);setSentSet(new Set((dr&&dr.sent)||[]))
   }
-  useEffect(()=>{load()},[cls,fri])
+  useEffect(()=>{if(myClasses!==null)load()},[cls,fri,myClasses])
   const subjects=data?(data.subjects||[]):[]
   const boys=data?(data.boys||[]):[]
+  const canEdit=s=>canSend||editable.includes(s)
   const short=s=>s==='Islamic Studies'?'Isl. St.':s
-  function setMark(pid,sub,val){setMarks(p=>({...p,[pid]:{...(p[pid]||{}),[sub]:val}}));setPreview(null);setSent(null)}
+  function setMark(pid,sub,val){if(!canEdit(sub))return;setMarks(p=>({...p,[pid]:{...(p[pid]||{}),[sub]:val}}));setPreview(null);setSent(null)}
   function overallOf(pid){
     if(nopaper[pid])return null
     const vals=subjects.map(s=>{const v=marks[pid]?marks[pid][s]:null;const n=parseFloat(v);return (v===''||v==null||isNaN(n))?null:n}).filter(v=>v!=null)
@@ -2625,7 +2635,7 @@ function WeeklyMarks({profile}){
   function saveRows(){return boys.map(b=>({pupil_id:b.pupil_id,marks:marks[b.pupil_id]||{},overall:overallOf(b.pupil_id),focus:focus[b.pupil_id]||'',no_paper:!!nopaper[b.pupil_id]}))}
   async function doSave(){setBusy('save')
     const {data:r,error}=await sb.functions.invoke('send-weekly-results',{body:{action:'save',send_key:sk,class_code:cls,week_label:wlabel,rows:saveRows()}})
-    setBusy('');if(error||(r&&r.error)){fire('Save failed');return};fire('Draft saved ✓')}
+    setBusy('');if(error||(r&&r.error)){fire((r&&r.error)||'Save failed');return};fire('Saved ✓')}
   async function doPreview(){const rows=sendRows();if(!rows.length){fire('Enter marks, or tick “no paper”');return}
     setBusy('preview');setSent(null)
     const {data:r,error}=await sb.functions.invoke('send-weekly-results',{body:{action:'preview',send_key:sk,week_label:wlabel,rows}})
@@ -2638,12 +2648,14 @@ function WeeklyMarks({profile}){
     setSent(r);setPreview(null);fire('Sent ✓');load()}
   const ready=sendRows()
   const isThis=friISO(fri)===friISO(thisFri)
+  const classChips=(myClasses&&myClasses.length)?myClasses:['is','ph']
+  if(myClasses!==null&&myClasses.length===0)return html`<div class="muted" style=${{padding:12}}>You don’t have an exam-marks subject assigned yet. Ask the office to add you.</div>`
   return html`<div>
     <h2 class="serif" style=${{color:C.navy,marginTop:4}}>Weekly results</h2>
-    <p class="muted" style=${{fontSize:12,marginTop:0,lineHeight:1.5}}>Exams are every Friday. Each Friday opens a fresh, blank week — type each boy’s marks out of 10 (Qur’ān as the week’s daily average), save as you go, then preview and send. The overall is the average of the subjects.</p>
-    <div style=${{display:'flex',gap:8,marginBottom:10}}>
-      ${[['is','Islamic Studies'],['ph','Pre-Hifz']].map(([c,l])=>html`<button key=${c} class="chip ${cls===c?'on':''}" onClick=${()=>{if(cls!==c)setCls(c)}}>${l}</button>`)}
-    </div>
+    <p class="muted" style=${{fontSize:12,marginTop:0,lineHeight:1.5}}>${canSend?'Exams are every Friday — each Friday opens a fresh, blank week. Type each boy’s marks out of 10 (Qur’ān as the week’s daily average), save as you go, then preview and send. The overall is the average of the subjects.':'Fill in your subject’s marks out of 10 for each boy, then Save. The office sends the full results to parents once every subject is in.'}</p>
+    ${classChips.length>1?html`<div style=${{display:'flex',gap:8,marginBottom:10}}>
+      ${classChips.map(c=>html`<button key=${c} class="chip ${cls===c?'on':''}" onClick=${()=>{if(cls!==c)setCls(c)}}>${CLABEL[c]}</button>`)}
+    </div>`:html`<div style=${{marginBottom:10}}><b style=${{color:C.navy}}>${CLABEL[classChips[0]]}</b></div>`}
     <div class="card" style=${{padding:'8px 10px',marginBottom:10,display:'flex',alignItems:'center',justifyContent:'space-between',gap:8}}>
       <button class="chip" onClick=${()=>setFri(addDays(fri,-7))}>◀</button>
       <div style=${{textAlign:'center'}}><b style=${{color:C.navy}}>${wlabel}</b>${isThis?html`<span class="muted" style=${{fontSize:11}}> · this week</span>`:''}</div>
@@ -2656,23 +2668,23 @@ function WeeklyMarks({profile}){
           <b style=${{color:C.navy}}>${b.name} <span class="muted" style=${{fontWeight:400,fontSize:11}}>${b.year||''}</span></b>
           <span style=${{display:'flex',alignItems:'center',gap:8}}>
             ${done&&html`<span class="tag" style=${{background:'#E5EEE7',color:C.green,padding:'2px 8px',fontSize:11}}>Sent</span>`}
-            ${!np&&html`<span class="tag" style=${{background:C.navy,color:'#fff',padding:'3px 10px'}}>${ov==null?'—':ov+'%'}</span>`}
+            ${!np&&canSend&&html`<span class="tag" style=${{background:C.navy,color:'#fff',padding:'3px 10px'}}>${ov==null?'—':ov+'%'}</span>`}
           </span>
         </div>
         ${!np?html`<div style=${{display:'flex',gap:10,flexWrap:'wrap',marginTop:8}}>
-          ${subjects.map(s=>html`<div key=${s} style=${{display:'flex',flexDirection:'column'}}>
+          ${subjects.map(s=>{const ed=canEdit(s);return html`<div key=${s} style=${{display:'flex',flexDirection:'column',opacity:ed?1:0.5}}>
             <span class="lbl" style=${{marginBottom:2}}>${short(s)}</span>
-            <input class="in" inputmode="decimal" style=${{marginTop:0,width:64,textAlign:'center'}} placeholder="/10" value=${(marks[pid]&&marks[pid][s]!=null)?marks[pid][s]:''} onInput=${e=>setMark(pid,s,e.target.value)}/>
-          </div>`)}
+            <input class="in" inputmode="decimal" disabled=${!ed} style=${{marginTop:0,width:64,textAlign:'center',background:ed?'#fff':'#F1EFEA'}} placeholder="/10" value=${(marks[pid]&&marks[pid][s]!=null)?marks[pid][s]:''} onInput=${e=>setMark(pid,s,e.target.value)}/>
+          </div>`})}
         </div>
-        <input class="in" style=${{marginTop:8,fontSize:13}} placeholder="Focus for next week (optional)" value=${focus[pid]||''} onInput=${e=>{setFocus(p=>({...p,[pid]:e.target.value}));setPreview(null)}}/>`:''}
-        <label style=${{display:'flex',gap:6,alignItems:'center',fontSize:12,marginTop:8,cursor:'pointer',color:C.muted}}><input type="checkbox" checked=${np} onChange=${e=>{setNopaper(p=>({...p,[pid]:e.target.checked}));setPreview(null)}}/> No paper this week (send a short note)</label>
+        ${canSend?html`<input class="in" style=${{marginTop:8,fontSize:13}} placeholder="Focus for next week (optional)" value=${focus[pid]||''} onInput=${e=>{setFocus(p=>({...p,[pid]:e.target.value}));setPreview(null)}}/>`:''}`:''}
+        ${canSend?html`<label style=${{display:'flex',gap:6,alignItems:'center',fontSize:12,marginTop:8,cursor:'pointer',color:C.muted}}><input type="checkbox" checked=${np} onChange=${e=>{setNopaper(p=>({...p,[pid]:e.target.checked}));setPreview(null)}}/> No paper this week (send a short note)</label>`:''}
       </div>`})}
     <div style=${{display:'flex',gap:8,flexWrap:'wrap',margin:'4px 0 10px'}}>
-      <button class="chip" disabled=${busy==='save'} onClick=${doSave}>${busy==='save'?'Saving…':'Save draft'}</button>
-      <button class="btn" disabled=${busy==='preview'||!ready.length} onClick=${doPreview}>${busy==='preview'?'Checking…':'Preview ('+ready.length+')'}</button>
+      <button class="chip" disabled=${busy==='save'} onClick=${doSave}>${busy==='save'?'Saving…':'Save'}</button>
+      ${canSend?html`<button class="btn" disabled=${busy==='preview'||!ready.length} onClick=${doPreview}>${busy==='preview'?'Checking…':'Preview ('+ready.length+')'}</button>`:''}
     </div>
-    ${preview&&html`<div class="card" style=${{padding:14,marginBottom:12,border:'1px solid '+C.gold}}>
+    ${canSend&&preview&&html`<div class="card" style=${{padding:14,marginBottom:12,border:'1px solid '+C.gold}}>
       <b class="serif" style=${{color:C.navy,fontSize:16}}>Preview — nothing sent yet</b>
       <div class="muted" style=${{fontSize:12,margin:'6px 0 10px'}}>${preview.with_parents} will be sent${preview.no_parent?' · '+preview.no_parent+' with no parent (skipped)':''}${preview.already_sent?' · '+preview.already_sent+' already sent (will resend)':''}</div>
       <div style=${{maxHeight:240,overflow:'auto',border:'1px solid '+C.line,borderRadius:10}}>
@@ -2688,7 +2700,7 @@ function WeeklyMarks({profile}){
       <b style=${{color:C.green}}>✓ Sent.</b>
       <div class="muted" style=${{fontSize:12,marginTop:4}}>${(sent.results||[]).filter(x=>x.in_app).length} boy(s) messaged · ${(sent.results||[]).reduce((s,x)=>s+(x.emails||0),0)} emails · ${(sent.results||[]).reduce((s,x)=>s+(x.push||0),0)} notifications.</div>
     </div>`}
-    <div class="muted" style=${{fontSize:12,textAlign:'center',padding:'4px 0 2px'}}>${sentAt?('✓ '+wlabel+' sent on '+fmtWhen(sentAt)):(wlabel+' — not sent yet')}</div>
+    ${canSend?html`<div class="muted" style=${{fontSize:12,textAlign:'center',padding:'4px 0 2px'}}>${sentAt?('✓ '+wlabel+' sent on '+fmtWhen(sentAt)):(wlabel+' — not sent yet')}</div>`:''}
     ${toast&&html`<div style=${{position:'fixed',left:'50%',bottom:24,transform:'translateX(-50%)',background:'#0E1D38',color:'#fff',padding:'10px 16px',borderRadius:999,fontSize:14,maxWidth:'90%',textAlign:'center'}}>${toast}</div>`}
   </div>`}
 
