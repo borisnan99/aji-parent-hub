@@ -184,9 +184,9 @@ function PupilEditor({pupil,classes,onClose,onSaved}){
   async function setPreferred(cid){setGBusy('pref-'+cid);const {data,error}=await sb.functions.invoke('user-admin',{body:{action:'set_preferred',pupil_id:pupil.id,contact_id:cid}});setGBusy('');if(error||(data&&data.error)){setPMsg((data&&data.error)||'Error');return}setPMsg('Preferred contact updated ✓');loadGuardians()}
   async function saveEmail(pid){const em=(emailDraft[pid]||'').trim();if(!em||!em.includes('@')){setPMsg('Enter a valid email');return}setGBusy('em-'+pid);const {data,error}=await sb.functions.invoke('user-admin',{body:{action:'parent_email',parent_id:pid,email:em}});setGBusy('');if(error||(data&&data.error)){setPMsg((data&&data.error)||'Error');return}setPMsg('Email updated ✓');loadGuardians()}
   function startNum(c){setNumEdit('c-'+c.id);setNumDraft({id:c.id,parent_id:null,label:c.label||'',name:c.name||'',mobile:c.mobile||''})}
-  function startAddNum(pid){setNumEdit('new-'+pid);setNumDraft({id:null,parent_id:pid,label:'',name:'',mobile:''})}
+  function startAddNum(pid){setNumEdit('new-'+pid);setNumDraft({id:null,parent_id:pid||null,pupil_id:pupil.id,label:'',name:'',mobile:''})}
   function cancelNum(){setNumEdit(null);setNumDraft({})}
-  async function saveNum(){if(!(numDraft.mobile||'').trim()){setPMsg('Enter a number');return}setGBusy('num');const {data,error}=await sb.functions.invoke('user-admin',{body:{action:'contact_save',id:numDraft.id||undefined,parent_id:numDraft.parent_id,label:numDraft.label,name:numDraft.name,mobile:numDraft.mobile}});setGBusy('');if(error||(data&&data.error)){setPMsg((data&&data.error)||'Error saving');return}setPMsg('Number saved ✓');cancelNum();loadGuardians()}
+  async function saveNum(){if(!(numDraft.mobile||'').trim()){setPMsg('Enter a number');return}setGBusy('num');const {data,error}=await sb.functions.invoke('user-admin',{body:{action:'contact_save',id:numDraft.id||undefined,parent_id:numDraft.parent_id||undefined,pupil_id:numDraft.pupil_id||undefined,label:numDraft.label,name:numDraft.name,mobile:numDraft.mobile}});setGBusy('');if(error||(data&&data.error)){setPMsg((data&&data.error)||'Error saving');return}setPMsg('Number saved ✓');cancelNum();loadGuardians()}
   async function delNum(){if(!numDraft.id)return;if(!window.confirm('Remove this number?'))return;setGBusy('num');const {data,error}=await sb.functions.invoke('user-admin',{body:{action:'contact_delete',id:numDraft.id}});setGBusy('');if(error||(data&&data.error)){setPMsg((data&&data.error)||'Error');return}setPMsg('Number removed');cancelNum();loadGuardians()}
   const numForm=()=>html`<div class="card" style=${{padding:10,marginTop:6,background:'#FAF8F3',border:'1px solid '+C.gold}}>
     <div style=${{display:'flex',gap:6,flexWrap:'wrap'}}>
@@ -239,15 +239,15 @@ function PupilEditor({pupil,classes,onClose,onSaved}){
         <button class="chip ${active?'on':''}" onClick=${()=>setActive(a=>!a)}>${active?'On roll':'Left'}</button></div>`}
       ${!isNew&&html`<div style=${{marginTop:16,borderTop:'1px solid '+C.line,paddingTop:14}}>
         <div class="lbl" style=${{marginBottom:2}}>Parents / Guardians & contacts</div>
-        <div class="muted" style=${{fontSize:11,marginBottom:8,lineHeight:1.5}}>Tap ☆ <b>Make preferred</b> under a number to choose the main contact, correct the email we send exam marks & announcements to, or tap a number to call it.</div>
+        <div class="muted" style=${{fontSize:11,marginBottom:8,lineHeight:1.5}}>Tap ☆ <b>Make preferred</b> under a number to choose the main contact, correct the email we send exam marks & announcements to, or tap a number to call it. No email? Use <b>Add a phone number</b> to save a name and number only.</div>
         ${guardians===null?html`<div class="muted" style=${{fontSize:12}}>Loading…</div>`:guardians.length===0?html`<div class="muted" style=${{fontSize:12}}>No parents linked yet — add one below.</div>`:''}
         ${(guardians||[]).map(g=>html`<div key=${g.parent_id} class="card" style=${{padding:'10px 12px',marginBottom:8,border:'1px solid '+((g.numbers||[]).some(c=>c.is_preferred)?C.gold:C.line)}}>
           <b style=${{fontSize:14}}>${g.full_name||'Parent'}</b>
-          <div class="lbl" style=${{marginTop:10,fontWeight:600}}>Email</div>
+          ${g.parent_id?html`<div class="lbl" style=${{marginTop:10,fontWeight:600}}>Email</div>
           <div style=${{display:'flex',gap:6,marginTop:4}}>
             <input class="in" type="email" style=${{marginTop:0,flex:1,minWidth:0}} value=${emailDraft[g.parent_id]||''} onInput=${e=>setEmailDraft(d=>({...d,[g.parent_id]:e.target.value}))}/>
             <button class="chip" style=${{flexShrink:0}} disabled=${gBusy==='em-'+g.parent_id||(emailDraft[g.parent_id]||'')===(g.email||'')} onClick=${()=>saveEmail(g.parent_id)}>${gBusy==='em-'+g.parent_id?'…':'Save'}</button>
-          </div>
+          </div>`:html`<div class="muted" style=${{fontSize:11,marginTop:3}}>Phone only — no app login or email.</div>`}
           <div class="lbl" style=${{marginTop:12,fontWeight:600}}>Phone numbers</div>
           ${(g.numbers||[]).length===0&&numEdit!=='new-'+g.parent_id?html`<div class="muted" style=${{fontSize:12,marginTop:4}}>No number on file.</div>`:''}
           ${(g.numbers||[]).map(c=> numEdit==='c-'+c.id ? html`<div key=${c.id}>${numForm()}</div>` : html`<div key=${c.id} style=${{marginTop:6}}>
@@ -262,7 +262,8 @@ function PupilEditor({pupil,classes,onClose,onSaved}){
             </div>`)}
           ${numEdit==='new-'+g.parent_id?numForm():html`<button class="chip" style=${{marginTop:8}} onClick=${()=>startAddNum(g.parent_id)}>＋ Add number</button>`}
         </div>`)}
-        <div class="lbl" style=${{marginTop:10}}>Add another parent (e.g. the mother)</div>
+        ${!(guardians||[]).some(g=>!g.parent_id)?html`<div style=${{marginTop:6}}>${numEdit==='new-null'?numForm():html`<button class="chip" onClick=${()=>startAddNum(null)}>＋ Add a phone number (no email)</button>`}</div>`:''}
+        <div class="lbl" style=${{marginTop:12}}>Add another parent with an email (sends a login invite)</div>
         <input class="in" type="email" placeholder="Parent's email" value=${pEmail} onInput=${e=>setPEmail(e.target.value)}/>
         <input class="in" placeholder="Parent's name (optional)" value=${pName} onInput=${e=>setPName(e.target.value)} style=${{marginTop:6}}/>
         <button class="btn" style=${{marginTop:8,width:'100%'}} disabled=${pBusy} onClick=${addParent}>${pBusy?'Adding…':'Add & send invite'}</button>
