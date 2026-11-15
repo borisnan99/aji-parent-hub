@@ -1371,16 +1371,24 @@ function Supervisor({profile}){
   const [welfare,setWelfare]=useState('');const [maint,setMaint]=useState('');const [important,setImportant]=useState('')
   const [rows,setRows]=useState(null);const [busy,setBusy]=useState(false);const [toast,setToast]=useState('')
   const fire=m=>{setToast(m);setTimeout(()=>setToast(''),3600)}
+  const [editId,setEditId]=useState(null);const isAdmin=profile.role==='admin'
+  function resetForm(){setEditId(null);setShift('');setArrived('');setLightsOut('');setChecks([]);setSecured(false);setTimeSecured('');setWelfare('');setMaint('');setImportant('')}
+  function startEdit(r){setEditId(r.id);setDate((r.check_date||today).slice(0,10));setName(r.supervisor_name||'');setShift(r.shift||'');setArrived(r.arrived_at||'');setLightsOut(r.lights_out||'');setChecks(r.room_checks||[]);setSecured(!!r.final_secured);setTimeSecured(r.time_secured||'');setWelfare(r.welfare_incidents||'');setMaint(r.maintenance_notes||'');setImportant(r.important_info||'');try{window.scrollTo({top:0,behavior:'smooth'})}catch(_){}}
+  async function del(r){if(!window.confirm('Delete this supervisor log ('+fmtDate(r.check_date)+' · '+(r.shift||'')+')? This cannot be undone.'))return
+    const {data,error}=await sb.functions.invoke('supervisor-checklist',{body:{action:'delete',id:r.id}})
+    if(error||(data&&data.error)){fire((data&&data.error)||'Delete failed');return}
+    if(editId===r.id)resetForm();fire('Log deleted');loadRows()}
   async function loadRows(){const {data}=await sb.functions.invoke('supervisor-checklist',{body:{action:'list'}});setRows((data&&data.rows)||[])}
   useEffect(()=>{loadRows()},[])
   function toggleCheck(it){setChecks(c=>c.includes(it)?c.filter(x=>x!==it):c.concat(it))}
   async function submit(){if(!name){fire('Choose the supervisor');return}if(!shift){fire('Choose Day or Night');return}
     setBusy(true)
-    const {data,error}=await sb.functions.invoke('supervisor-checklist',{body:{action:'save',check_date:date,supervisor_name:name,shift,arrived_at:arrived,lights_out:lightsOut,room_checks:checks,final_secured:secured,time_secured:timeSecured,welfare_incidents:welfare,maintenance_notes:maint,important_info:important}})
+    const payload={check_date:date,supervisor_name:name,shift,arrived_at:arrived,lights_out:lightsOut,room_checks:checks,final_secured:secured,time_secured:timeSecured,welfare_incidents:welfare,maintenance_notes:maint,important_info:important}
+    const {data,error}=await sb.functions.invoke('supervisor-checklist',{body:editId?{action:'update',id:editId,...payload}:{action:'save',...payload}})
     setBusy(false)
     if(error||(data&&data.error)){fire((data&&data.error)||'Error saving');return}
-    fire('Checklist saved')
-    setShift('');setArrived('');setLightsOut('');setChecks([]);setSecured(false);setTimeSecured('');setWelfare('');setMaint('');setImportant('');loadRows()}
+    fire(editId?'Checklist updated':'Checklist saved')
+    resetForm();loadRows()}
   async function exportCsv(){const {data,error}=await sb.functions.invoke('supervisor-checklist',{body:{action:'export',month:date.slice(0,7)}})
     if(error||(data&&data.error)){fire('Export failed');return}
     const rs=(data&&data.rows)||[];if(!rs.length){fire('No checklists this month');return}
@@ -1408,7 +1416,8 @@ function Supervisor({profile}){
       <div class="lbl" style=${{marginTop:12}}>Student welfare / incidents</div><textarea class="in" style=${{minHeight:54,resize:'vertical',fontFamily:'inherit'}} value=${welfare} onInput=${e=>setWelfare(e.target.value)}></textarea>
       <div class="lbl" style=${{marginTop:10}}>Maintenance / handover notes</div><textarea class="in" style=${{minHeight:54,resize:'vertical',fontFamily:'inherit'}} value=${maint} onInput=${e=>setMaint(e.target.value)}></textarea>
       <div class="lbl" style=${{marginTop:10}}>Important information / issues</div><textarea class="in" style=${{minHeight:54,resize:'vertical',fontFamily:'inherit'}} value=${important} onInput=${e=>setImportant(e.target.value)}></textarea>
-      <button class="btn" style=${{marginTop:14}} disabled=${busy||!shift||!name} onClick=${submit}>${busy?'Saving…':'Submit checklist'}</button>
+      ${editId?html`<div class="muted" style=${{fontSize:12,marginTop:10,color:C.navy}}>✏ Editing an existing log — change what you need, then press Update. <span style=${{cursor:'pointer',textDecoration:'underline'}} onClick=${resetForm}>Cancel</span></div>`:''}
+      <button class="btn" style=${{marginTop:14}} disabled=${busy||!shift||!name} onClick=${submit}>${busy?(editId?'Updating…':'Saving…'):(editId?'Update checklist':'Submit checklist')}</button>
     </div>
     <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
       <h3 class="serif" style=${{color:C.navy,margin:0}}>Recent submissions</h3>
@@ -1420,6 +1429,10 @@ function Supervisor({profile}){
       <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center'}}><b>${fmtDate(r.check_date)} · ${r.shift||''}</b><span class="tag" style=${{background:r.final_secured?'#E5EEE7':C.urgentSoft,color:r.final_secured?C.green:C.urgent,padding:'3px 9px'}}>${r.final_secured?'Secured':'Not secured'}</span></div>
       <div class="muted" style=${{fontSize:12,marginTop:4}}>${r.supervisor_name||r.logged_by_name}${r.arrived_at?' · in '+r.arrived_at:''}${r.lights_out?' · lights out '+r.lights_out:''}${r.time_secured?' · secured '+r.time_secured:''}</div>
       <div class="muted" style=${{fontSize:11,marginTop:3}}>${(r.room_checks||[]).length}/${SUP_ROOM_CHECKS.length} room checks${r.welfare_incidents?' · welfare noted':''}${r.maintenance_notes?' · maintenance noted':''}${r.important_info?' · issues noted':''}</div>
+      <div style=${{display:'flex',gap:8,marginTop:8}}>
+        ${(isAdmin||r.logged_by===profile.id)?html`<button class="chip" style=${{fontSize:12,padding:'3px 12px'}} onClick=${()=>startEdit(r)}>✏ Edit</button>`:''}
+        ${isAdmin?html`<button class="chip" style=${{fontSize:12,padding:'3px 12px',color:C.urgent}} onClick=${()=>del(r)}>🗑 Delete</button>`:''}
+      </div>
     </div>`)}
     ${toast&&html`<div style=${{position:'fixed',left:'50%',bottom:24,transform:'translateX(-50%)',background:'#0E1D38',color:'#fff',padding:'10px 16px',borderRadius:999,fontSize:14,maxWidth:'90%',textAlign:'center'}}>${toast}</div>`}
   </div>`}
