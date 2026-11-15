@@ -2646,6 +2646,28 @@ function WeeklyMarks({profile}){
     const {data:r,error}=await sb.functions.invoke('send-weekly-results',{body:{action:'send',send_key:sk,week_label:wlabel,class_code:cls,rows}})
     setBusy('');if(error||(r&&r.error)){fire((r&&r.error)||'Error sending');return}
     setSent(r);setPreview(null);fire('Sent ✓');load()}
+  async function doExport(){setBusy('export')
+    const {data:r,error}=await sb.functions.invoke('send-weekly-results',{body:{action:'export'}})
+    setBusy('')
+    if(error||(r&&r.error)){fire((r&&r.error)||'Export failed');return}
+    const rws=r.rows||[];if(!rws.length){fire('No results to export yet');return}
+    const CL={is:'Islamic Studies',ph:'Pre-Hifz'}
+    const wkd=s=>(s.split('|')[1]||s)
+    const weeks=[...new Map(rws.map(x=>[x.send_key,{sk:x.send_key,label:x.week_label||x.send_key}])).values()].sort((a,b)=>wkd(a.sk)<wkd(b.sk)?-1:1)
+    const q=v=>{const s=String(v==null?'':v);return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s}
+    const head=['Class','Boy','Year',...weeks.map(w=>w.label),'Average %']
+    const out=[head.map(q).join(',')]
+    for(const cc of ['is','ph']){
+      const bys=[...new Map(rws.filter(x=>x.class_code===cc).map(x=>[x.name,{name:x.name,year:x.year}])).values()].sort((a,b)=>a.name.localeCompare(b.name))
+      for(const bb of bys){const cells=[CL[cc],bb.name,bb.year];const ovs=[]
+        for(const w of weeks){const rec=rws.find(x=>x.class_code===cc&&x.name===bb.name&&x.send_key===w.sk)
+          let cell='';if(rec){if(rec.no_paper)cell='absent';else if(rec.overall!=null){cell=rec.overall+'%';ovs.push(rec.overall)}}
+          cells.push(cell)}
+        cells.push(ovs.length?Math.round(ovs.reduce((a,b)=>a+b,0)/ovs.length)+'%':'')
+        out.push(cells.map(q).join(','))}}
+    const blob=new Blob(['﻿'+out.join('\r\n')],{type:'text/csv;charset=utf-8'})
+    const u=URL.createObjectURL(blob);const a=document.createElement('a');a.href=u;a.download='AJI_Weekly_Results.csv';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),1200)
+    fire('Downloaded ✓')}
   const ready=sendRows()
   const isThis=friISO(fri)===friISO(thisFri)
   const classChips=(myClasses&&myClasses.length)?myClasses:['is','ph']
@@ -2683,6 +2705,7 @@ function WeeklyMarks({profile}){
     <div style=${{display:'flex',gap:8,flexWrap:'wrap',margin:'4px 0 10px'}}>
       <button class="chip" disabled=${busy==='save'} onClick=${doSave}>${busy==='save'?'Saving…':'Save'}</button>
       ${canSend?html`<button class="btn" disabled=${busy==='preview'||!ready.length} onClick=${doPreview}>${busy==='preview'?'Checking…':'Preview ('+ready.length+')'}</button>`:''}
+      ${canSend?html`<button class="chip" disabled=${busy==='export'} onClick=${doExport}>${busy==='export'?'Preparing…':'⬇ Download all results'}</button>`:''}
     </div>
     ${canSend&&preview&&html`<div class="card" style=${{padding:14,marginBottom:12,border:'1px solid '+C.gold}}>
       <b class="serif" style=${{color:C.navy,fontSize:16}}>Preview — nothing sent yet</b>
