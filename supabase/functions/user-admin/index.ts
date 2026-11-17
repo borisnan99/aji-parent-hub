@@ -48,7 +48,8 @@ Deno.serve(async (req) => {
     }
 
     if (action === "search") {
-      const q = (body.q || "").trim();
+      // strip PostgREST filter syntax (",", "(", ")") and LIKE wildcards so the term can't alter the .or() filter
+      const q = String(body.q || "").replace(/[,()%*\\]/g, " ").trim();
       if (q.length < 2) return json({ ok: true, users: [] });
       const like = `%${q}%`;
       const { data: profs } = await svc.from("profiles").select("id,full_name,email,role,roles,is_active").or(`full_name.ilike.${like},email.ilike.${like}`).order("full_name").limit(25);

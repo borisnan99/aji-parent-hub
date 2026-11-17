@@ -10,10 +10,16 @@ const cors = {
 const json = (b: unknown, s = 200) =>
   new Response(JSON.stringify(b), { status: s, headers: { ...cors, "content-type": "application/json" } });
 
+const PW_ALPHA = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"; // no 0/O/1/I/L — easy to read from an email
+function rnd(n: number) { const a = new Uint32Array(1); crypto.getRandomValues(a); return a[0] % n; }
+// always contains at least one digit and one letter, so it still meets an "upper, lower and digits" password policy
+function randChunk(len: number) { for (;;) { let s = ""; for (let i = 0; i < len; i++) s += PW_ALPHA[rnd(PW_ALPHA.length)]; if (/[0-9]/.test(s) && /[A-Z]/.test(s)) return s; } }
 function tempPassword(email: string) {
   const base = (email.split("@")[0].replace(/[^a-zA-Z]/g, "") || "Parent");
   const cap = base.charAt(0).toUpperCase() + base.slice(1, 6).toLowerCase();
-  return cap + Math.floor(1000 + Math.random() * 9000);
+  // The name prefix is guessable from the email, so the strength comes from the crypto-random suffix (31^6 ≈ 9x10^8);
+  // previously it was only 4 Math.random digits (9,000 possibilities for a known email).
+  return cap + "-" + randChunk(6);
 }
 
 function inviteHtml(em: string, pw: string, child: string) {

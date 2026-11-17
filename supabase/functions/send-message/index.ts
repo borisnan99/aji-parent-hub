@@ -57,6 +57,8 @@ Deno.serve(async (req) => {
       conv = data;
       if (!conv) return json({ error: "conversation not found" }, 404);
       if (!isStaff && conv.parent_id !== user.id) return json({ error: "not your conversation" }, 403);
+      // staff may only reply in conversations with parents they are allowed to message (same rule as starting one)
+      if (isStaff && !(await canSeeParent(svc, user.id, me.role, conv.parent_id))) return json({ error: "You are not allowed to message this parent" }, 403);
     } else if (isStaff) {
       if (!parent_id) return json({ error: "parent_id required to start a conversation" }, 400);
       const allowed = await canSeeParent(svc, user.id, me.role, parent_id);
@@ -82,6 +84,12 @@ Deno.serve(async (req) => {
       }
     }
 
+    // A parent may only attach files they uploaded for this conversation (client uploads to "<conversation id>/..." or
+    // "new/..."). Without this a parent could point attachment_path at another family's file in the bucket.
+    if (attachment_path != null) {
+      const ap = String(attachment_path);
+      if (ap.includes("..") || (!isStaff && !(ap.startsWith(conv.id + "/") || ap.startsWith("new/")))) return json({ error: "invalid attachment" }, 400);
+    }
     const base = (body || "").trim();
     const finalBody = (isStaff && base) ? base + "\n\n— " + (me.full_name || "the school") : base;
     await svc.from("messages").insert({

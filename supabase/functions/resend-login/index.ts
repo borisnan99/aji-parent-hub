@@ -3,7 +3,12 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 const cors = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type", "Access-Control-Allow-Methods": "POST, OPTIONS" };
 const json = (b: unknown, s = 200) => new Response(JSON.stringify(b), { status: s, headers: { ...cors, "content-type": "application/json" } });
 const WORDS = ["Noor", "Iman", "Sabr", "Huda", "Rahma", "Barakah", "Falah", "Amanah", "Hikmah", "Taqwa", "Nur", "Shukr"];
-function newPass() { return WORDS[Math.floor(Math.random() * WORDS.length)] + Math.floor(1000 + Math.random() * 9000); }
+const PW_ALPHA = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"; // no 0/O/1/I/L — easy to read from an email
+function rnd(n: number) { const a = new Uint32Array(1); crypto.getRandomValues(a); return a[0] % n; }
+// always contains at least one digit and one letter, so it still meets an "upper, lower and digits" password policy
+function randChunk(len: number) { for (;;) { let s = ""; for (let i = 0; i < len; i++) s += PW_ALPHA[rnd(PW_ALPHA.length)]; if (/[0-9]/.test(s) && /[A-Z]/.test(s)) return s; } }
+// cryptographically random (≈10^10 combinations); the old Word+4-digit scheme had only ~108k and used Math.random
+function newPass() { return WORDS[rnd(WORDS.length)] + "-" + randChunk(6); }
 function loginEmail(email: string, pass: string) {
   return `<div style="font-family:Arial,Helvetica,sans-serif;max-width:560px;margin:auto;color:#1B2438;font-size:15px;line-height:1.6">
 <div style="background:#14294D;color:#fff;padding:16px 18px;border-radius:12px 12px 0 0"><span style="font-family:Georgia,serif;font-size:19px;font-weight:bold">Your Parent Hub login</span><br><span style="color:#C9D3E6;font-size:13px">Al Jamiatul Islamiyah · Bolton Darul Uloom</span></div>

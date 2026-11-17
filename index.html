@@ -95,9 +95,9 @@ function Login(){
     <div class="muted" style=${{fontSize:10,letterSpacing:'.22em',fontWeight:600,marginTop:8}}>SCHOOL COMMUNICATION PORTAL</div>
     <div class="card" style=${{padding:20,marginTop:22,textAlign:'left'}}>
       ${mode==='signin'?html`<div>
-        <div class="lbl">Email</div><input class="in" value=${email} onInput=${e=>setEmail(e.target.value)} placeholder="you@example.com"/>
-        <div class="lbl" style=${{marginTop:12}}>Password</div><input class="in" type="password" value=${pw} onInput=${e=>setPw(e.target.value)} onKeyDown=${e=>e.key==='Enter'&&go()}/>
-        ${err&&html`<div style=${{color:C.urgent,fontSize:13,marginTop:10}}>${err}</div>`}
+        <label class="lbl" for="login-email" style=${{display:'block'}}>Email</label><input id="login-email" class="in" type="email" inputmode="email" autocomplete="username" autocapitalize="none" spellcheck="false" value=${email} onInput=${e=>setEmail(e.target.value)} placeholder="you@example.com"/>
+        <label class="lbl" for="login-pw" style=${{display:'block',marginTop:12}}>Password</label><input id="login-pw" class="in" type="password" autocomplete="current-password" value=${pw} onInput=${e=>setPw(e.target.value)} onKeyDown=${e=>e.key==='Enter'&&go()}/>
+        ${err&&html`<div role="alert" style=${{color:C.urgent,fontSize:13,marginTop:10}}>${err}</div>`}
         <button class="btn" style=${{marginTop:16}} disabled=${busy} onClick=${go}>${busy?'Signing in…':'Sign in'}</button>
         <div style=${{textAlign:'center',marginTop:12}}><button onClick=${()=>{setMode('reset');setErr('');setSent(false)}} style=${{background:'none',border:'none',color:C.navy,textDecoration:'underline',fontSize:12,cursor:'pointer'}}>Forgot password?</button></div>
       </div>`:sent?html`<div style=${{textAlign:'center'}}>
@@ -108,8 +108,8 @@ function Login(){
       </div>`:html`<div>
         <h3 class="serif" style=${{color:C.navy,margin:'0 0 4px'}}>Reset your password</h3>
         <p style=${{fontSize:12,color:C.muted,marginTop:0}}>Enter your email and we'll send you a link to set a new password.</p>
-        <div class="lbl">Email</div><input class="in" value=${email} onInput=${e=>setEmail(e.target.value)} placeholder="you@example.com" onKeyDown=${e=>e.key==='Enter'&&sendReset()}/>
-        ${err&&html`<div style=${{color:C.urgent,fontSize:13,marginTop:10}}>${err}</div>`}
+        <label class="lbl" for="reset-email" style=${{display:'block'}}>Email</label><input id="reset-email" class="in" type="email" inputmode="email" autocomplete="username" autocapitalize="none" spellcheck="false" value=${email} onInput=${e=>setEmail(e.target.value)} placeholder="you@example.com" onKeyDown=${e=>e.key==='Enter'&&sendReset()}/>
+        ${err&&html`<div role="alert" style=${{color:C.urgent,fontSize:13,marginTop:10}}>${err}</div>`}
         <button class="btn" style=${{marginTop:16}} disabled=${busy} onClick=${sendReset}>${busy?'Sending…':'Send reset link'}</button>
         <div style=${{textAlign:'center',marginTop:12}}><button onClick=${()=>{setMode('signin');setErr('')}} style=${{background:'none',border:'none',color:C.navy,textDecoration:'underline',fontSize:12,cursor:'pointer'}}>Back to sign in</button></div>
       </div>`}
@@ -132,7 +132,7 @@ function ResetPassword({onDone}){
         <p style=${{fontSize:12,color:C.muted,marginTop:0}}>Choose a new password for your account.</p>
         <div class="lbl" style=${{marginTop:8}}>New password</div><input class="in" type="password" value=${pw} onInput=${e=>setPw(e.target.value)} placeholder="At least 8 characters"/>
         <div class="lbl" style=${{marginTop:12}}>Confirm new password</div><input class="in" type="password" value=${pw2} onInput=${e=>setPw2(e.target.value)} onKeyDown=${e=>e.key==='Enter'&&save()}/>
-        ${err&&html`<div style=${{color:C.urgent,fontSize:13,marginTop:10}}>${err}</div>`}
+        ${err&&html`<div role="alert" style=${{color:C.urgent,fontSize:13,marginTop:10}}>${err}</div>`}
         <button class="btn" style=${{marginTop:16}} disabled=${busy} onClick=${save}>${busy?'Saving…':'Save new password'}</button>
       </div>`}
     </div>
@@ -269,7 +269,7 @@ function PupilEditor({pupil,classes,onClose,onSaved}){
         <button class="btn" style=${{marginTop:8,width:'100%'}} disabled=${pBusy} onClick=${addParent}>${pBusy?'Adding…':'Add & send invite'}</button>
         ${pMsg&&html`<div style=${{fontSize:12,marginTop:6,color:pMsg.indexOf('✓')>=0?C.green:C.urgent}}>${pMsg}</div>`}
       </div>`}
-      ${err&&html`<div style=${{color:C.urgent,fontSize:13,marginTop:10}}>${err}</div>`}
+      ${err&&html`<div role="alert" style=${{color:C.urgent,fontSize:13,marginTop:10}}>${err}</div>`}
       <div style=${{display:'flex',gap:8,marginTop:18}}>
         <button class="btn ghost" style=${{flex:1}} onClick=${onClose}>Cancel</button>
         <button class="btn gold" style=${{flex:1}} disabled=${busy} onClick=${save}>${busy?'Saving…':(isNew?'Add pupil':'Save changes')}</button></div>
@@ -610,7 +610,7 @@ function PraiseCollation(){
   function downloadSheet(){
     if(!fprev)return
     const cols=fprev.columns||[]
-    const esc=v=>{const s=(v==null?'':String(v));return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s}
+    const esc=v=>{let s=(v==null?'':String(v));if(/^[=+\-@\t\r]/.test(s)&&!/^-?(\d+(\.\d+)?%?)?$/.test(s))s="'"+s;return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s}
     const header=['Rank','Student','Year','Group','Attendance',...cols.map(c=>c.label),'Positive Total','Deductions','Final Total','Maximum Available Points','Percentage','Award']
     const lines=[esc('Praise results — '+mlbl(fp)+(fprev.summary.attendance?' (attendance included)':' (no attendance)')),header.map(esc).join(',')]
     fprev.rows.forEach(r=>{
@@ -829,7 +829,7 @@ function PraiseSetup(){
     const gk=ctx==='school'?'academic_year':'morning_class'
     const {data}=await sb.functions.invoke('praise-admin',{body:{action:'add',teacher_id:tid,context:ctx,group_kind:gk,group_value:gv}})
     setBusy(false);if(data&&data.ok){setGv('');load()}else fire((data&&data.error)||'Error')}
-  async function remove(id){await sb.functions.invoke('praise-admin',{body:{action:'remove',id}});load()}
+  async function remove(id){if(!window.confirm('Remove this praise assignment from the teacher?'))return;const {data,error}=await sb.functions.invoke('praise-admin',{body:{action:'remove',id}});if(error||(data&&data.error)){fire((data&&data.error)||'Could not remove');return}load()}
   if(!d)return html`<div class="muted">Loading praise setup…</div>`
   const opts=ctx==='school'?d.years:d.classes
   const byT={};d.assignments.forEach(a=>{(byT[a.teacher_name]=byT[a.teacher_name]||[]).push(a)})
@@ -936,7 +936,7 @@ function Boarding({profile}){
   </div>`}
 
 function BoardingChecks({profile,fire}){
-  const today=new Date().toISOString().slice(0,10)
+  const today=new Date(Date.now()-new Date().getTimezoneOffset()*60000).toISOString().slice(0,10)
   const [date,setDate]=useState(today)
   const [d,setD]=useState(null)
   const [open,setOpen]=useState(null);const [draft,setDraft]=useState(null);const [busy,setBusy]=useState(false)
@@ -1106,7 +1106,7 @@ function BoardingRooms({profile,fire}){
   async function openRoom(r){if(open===r.id){setOpen(null);return}setOpen(r.id);const {data}=await sb.functions.invoke('boarding-manage',{body:{action:'occupants_get',room_id:r.id}});setOcc(o=>({...o,[r.id]:(data&&data.occupants)||[]}))}
   async function reloadOcc(id){const {data}=await sb.functions.invoke('boarding-manage',{body:{action:'occupants_get',room_id:id}});setOcc(o=>({...o,[id]:(data&&data.occupants)||[]}))}
   async function addOcc(id,pid){await sb.functions.invoke('boarding-manage',{body:{action:'occupant_add',room_id:id,pupil_id:pid}});setQ('');reloadOcc(id);loadRef()}
-  async function removeOcc(id,pid){await sb.functions.invoke('boarding-manage',{body:{action:'occupant_remove',room_id:id,pupil_id:pid}});reloadOcc(id);loadRef()}
+  async function removeOcc(id,pid){if(!window.confirm('Remove this pupil from the room?'))return;const {data,error}=await sb.functions.invoke('boarding-manage',{body:{action:'occupant_remove',room_id:id,pupil_id:pid}});if(error||(data&&data.error)){fire((data&&data.error)||'Could not remove');return}reloadOcc(id);loadRef()}
   async function makeRep(id,pid){await sb.functions.invoke('boarding-manage',{body:{action:'set_rep',room_id:id,pupil_id:pid}});reloadOcc(id);fire('Rep set')}
   async function setFreq(id,freq){await sb.functions.invoke('boarding-check',{body:{action:'set_frequency',room_id:id,check_frequency:freq}});loadRef()}
   async function toggleActive(r){await sb.functions.invoke('boarding-check',{body:{action:'set_room_active',room_id:r.id,active:!r.is_active}});loadRef()}
@@ -1152,7 +1152,7 @@ function BoardingRooms({profile,fire}){
 
 function BoardingDamage({profile,fire}){
   const isAdmin=profile.role==='admin'
-  const today=new Date().toISOString().slice(0,10)
+  const today=new Date(Date.now()-new Date().getTimezoneOffset()*60000).toISOString().slice(0,10)
   const [ref,setRef]=useState({rooms:[],boarders:[]});const [scope,setScope]=useState('open');const [rows,setRows]=useState(null);const [tot,setTot]=useState(0)
   const [showAdd,setShowAdd]=useState(false);const [busy,setBusy]=useState(false);const [pq,setPq]=useState('')
   const blank={log_date:today,room_id:'',area:'',item:'',item_other:'',description:'',pupil_id:'',reported_by_name:'',reporter_other:'',replacement_cost:'',money_received:false,money_received_note:''}
@@ -1267,7 +1267,7 @@ function Behaviour({profile}){
     setExBusy(false)
     if(error||(data&&data.error)){setExMsg((data&&data.error)||'Error');return}
     const rows=data.rows||[]
-    const esc=v=>{const s=(v==null?'':String(v));return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s}
+    const esc=v=>{let s=(v==null?'':String(v));if(/^[=+\-@\t\r]/.test(s)&&!/^-?(\d+(\.\d+)?%?)?$/.test(s))s="'"+s;return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s}
     const dOf=s=>s?new Date(s).toLocaleDateString('en-GB',{day:'2-digit',month:'2-digit',year:'numeric'}):''
     const tOf=s=>s?new Date(s).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}):''
     const header=['Month','Date','Time','Lesson period','Pupil','Year','Class','Code','Points off','Reason','Details','Status','Pupil statement','Reviewed on','Reviewed by','Logged by','Code meaning']
@@ -1365,7 +1365,7 @@ const SUP_SUPERVISORS=['Zubair Patel','Gulfam Khan','Yasin Patel','Ihsaanul Haqu
 function canSupervisor(p){if(!p)return false;if(p.role==='admin')return true;const em=(p.email||'').toLowerCase(),nm=(p.full_name||'').trim().toLowerCase();return (p.roles||[]).includes('supervisor')||['gulfam khan','zubair patel'].includes(nm)||['gulfam.khan@boltondarululoom.org.uk','zubair.patel@boltondarululoom.org.uk'].includes(em)}
 
 function Supervisor({profile}){
-  const today=new Date().toISOString().slice(0,10)
+  const today=new Date(Date.now()-new Date().getTimezoneOffset()*60000).toISOString().slice(0,10)
   const [date,setDate]=useState(today);const [name,setName]=useState(SUP_SUPERVISORS.includes(profile.full_name)?profile.full_name:'')
   const [shift,setShift]=useState('');const [arrived,setArrived]=useState('');const [lightsOut,setLightsOut]=useState('')
   const [checks,setChecks]=useState([]);const [secured,setSecured]=useState(false);const [timeSecured,setTimeSecured]=useState('')
@@ -1501,7 +1501,7 @@ function Safeguarding({profile}){
   </div>`}
 
 function FireDrills({profile}){
-  const today=new Date().toISOString().slice(0,10)
+  const today=new Date(Date.now()-new Date().getTimezoneOffset()*60000).toISOString().slice(0,10)
   const [date,setDate]=useState(today);const [period,setPeriod]=useState('');const [cond,setCond]=useState(profile.full_name||'')
   const [evac,setEvac]=useState('');const [roll,setRoll]=useState(false);const [notes,setNotes]=useState('')
   const [rows,setRows]=useState(null);const [busy,setBusy]=useState(false);const [toast,setToast]=useState('')
@@ -1546,7 +1546,7 @@ function Medical({profile}){
   const [mode,setMode]=useState('medication');const [pupils,setPupils]=useState(null)
   const [toast,setToast]=useState('');const fire=m=>{setToast(m);setTimeout(()=>setToast(''),3600)}
   const [q,setQ]=useState('');const [sel,setSel]=useState(null);const [med,setMed]=useState('');const [dose,setDose]=useState('');const [reason,setReason]=useState('');const [pn,setPn]=useState(false);const [mnotes,setMnotes]=useState('');const [busy,setBusy]=useState(false);const [mrows,setMrows]=useState(null)
-  const today=new Date().toISOString().slice(0,10)
+  const today=new Date(Date.now()-new Date().getTimezoneOffset()*60000).toISOString().slice(0,10)
   const [tdate,setTdate]=useState(today);const [slots,setSlots]=useState(null);const [openSlot,setOpenSlot]=useState(null);const [tq,setTq]=useState('');const [tsel,setTsel]=useState(null);const [treason,setTreason]=useState('');const [od,setOd]=useState({})
   async function loadPupils(){const {data}=await sb.from('pupils').select('id,first_name,last_name,academic_year,is_active').order('last_name');setPupils((data||[]).filter(p=>p.is_active!==false))}
   async function loadMed(){const {data}=await sb.functions.invoke('medical',{body:{action:'med_list'}});setMrows((data&&data.rows)||[])}
@@ -1656,7 +1656,7 @@ function KitchenDaily({profile,fire}){
   async function addCateredTemp(){const sess=(cs==='pm'&&cateredPm)?'pm':(cs==='am'&&cateredAm)?'am':(cateredAm?'am':cateredPm?'pm':'am');if(!ci||ct===''){fire('Add the food item and its temperature');return}const {data,error}=await sb.functions.invoke('kitchen',{body:{action:'temp_add',date,kind:'catered',session:sess,item:ci,temp:ct}});if(error||(data&&data.error)){fire((data&&data.error)||'Error');return}setCi('');setCt('');load()}
   async function saveExtra(){const {data}=await sb.functions.invoke('kitchen',{body:{action:'daily_meta',date,extra_checks:extra}});if(data&&data.ok)fire('Saved')}
   async function addTemp(){if(!ti||tt===''){fire('Add an item and temperature');return}const {data,error}=await sb.functions.invoke('kitchen',{body:{action:'temp_add',date,kind:tk,item:ti,temp:tt}});if(error||(data&&data.error)){fire((data&&data.error)||'Error');return}setTi('');setTt('');load()}
-  async function delTemp(id){await sb.functions.invoke('kitchen',{body:{action:'temp_delete',id}});load()}
+  async function delTemp(id){if(!window.confirm('Delete this temperature record? It will be removed from the food-safety diary.'))return;const {data,error}=await sb.functions.invoke('kitchen',{body:{action:'temp_delete',id}});if(error||(data&&data.error)){fire((data&&data.error)||'Could not delete');return}load()}
   async function exportMonth(){const {data}=await sb.functions.invoke('kitchen',{body:{action:'month_export',month:date.slice(0,7)}});if(!data||!data.ok){fire('Export failed');return}
     const rows=[['Kitchen daily diary — '+date.slice(0,7)],['Date','Catered AM','Catered PM','Open fridge','Open freezer','Open safe methods','Opened by','Close fridge','Close freezer','Close safe methods','Closed by','Notes']]
     ;(data.days||[]).forEach(d=>rows.push([d.log_date,d.catered_am?'Yes':'',d.catered_pm?'Yes':'',d.open_fridge??'',d.open_freezer??'',d.open_safe_methods?'Yes':'',d.open_by_name||'',d.close_fridge??'',d.close_freezer??'',d.close_safe_methods?'Yes':'',d.close_by_name||'',[d.open_notes,d.close_notes].filter(Boolean).join(' / ')]))
@@ -1745,7 +1745,7 @@ function KitchenDaily({profile,fire}){
           <button class="chip" style=${{background:C.navy,color:'#fff',borderColor:C.navy}} onClick=${addCateredTemp}>Add</button></div></div>`:''}
         <div style=${{marginTop:8}}>${cateredTemps.length===0?html`<div class="muted" style=${{fontSize:12}}>No catered food logged yet today.</div>`:cateredTemps.map(t=>html`<div key=${t.id} style=${{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,padding:'6px 0',borderTop:'1px solid #EFECE4',fontSize:12}}>
           <div><b>${t.item}</b> <span class="muted">· ${t.session==='pm'?'afternoon/evening':t.session==='am'?'morning':''} · ${t.temp_c}°C</span></div>
-          <button class="chip" style=${{padding:'2px 8px'}} onClick=${()=>delTemp(t.id)}>✕</button></div>`)}</div>
+          <button class="chip" style=${{padding:'2px 8px'}} aria-label="Delete temperature record" title="Delete" onClick=${()=>delTemp(t.id)}>✕</button></div>`)}</div>
       </div>`:''}
     </div>
     ${Check('Opening checks (morning)',o,setO,'daily_open')}
@@ -1759,7 +1759,7 @@ function KitchenDaily({profile,fire}){
         <button class="chip" style=${{background:C.navy,color:'#fff',borderColor:C.navy}} onClick=${addTemp}>Add</button></div>
       <div style=${{marginTop:8}}>${cookTemps.length===0?html`<div class="muted" style=${{fontSize:12}}>No temperatures logged yet today.</div>`:cookTemps.map(t=>html`<div key=${t.id} style=${{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,padding:'6px 0',borderTop:'1px solid #EFECE4',fontSize:12}}>
         <div><b>${t.item}</b> <span class="muted">· ${t.kind.replace('_',' ')} · ${t.temp_c}°C</span></div>
-        <div style=${{display:'flex',gap:6,alignItems:'center'}}>${t.pass===true?html`<span class="tag" style=${{background:'#E5EEE7',color:C.green}}>Pass</span>`:t.pass===false?html`<span class="tag" style=${{background:C.urgentSoft,color:C.urgent}}>FAIL</span>`:''}<button class="chip" style=${{padding:'2px 8px'}} onClick=${()=>delTemp(t.id)}>✕</button></div></div>`)}</div>
+        <div style=${{display:'flex',gap:6,alignItems:'center'}}>${t.pass===true?html`<span class="tag" style=${{background:'#E5EEE7',color:C.green}}>Pass</span>`:t.pass===false?html`<span class="tag" style=${{background:C.urgentSoft,color:C.urgent}}>FAIL</span>`:''}<button class="chip" style=${{padding:'2px 8px'}} aria-label="Delete temperature record" title="Delete" onClick=${()=>delTemp(t.id)}>✕</button></div></div>`)}</div>
     </div>
     <div class="card" style=${{padding:'12px 14px'}}>
       <b>Extra checks this week</b>
@@ -2233,7 +2233,7 @@ function RegisterAssign(){
   </div>`}
 
 function Attendance({profile}){
-  const today=new Date().toISOString().slice(0,10)
+  const today=new Date(Date.now()-new Date().getTimezoneOffset()*60000).toISOString().slice(0,10)
   const [date,setDate]=useState(today)
   const [session,setSession]=useState('morning')
   const [amode,setAmode]=useState('take')
@@ -2412,7 +2412,7 @@ function Detentions({profile}){
   const canAssign=profile.role==='admin'||(profile.email||'').toLowerCase()==='yasin.patel@boltondarululoom.org.uk'||(profile.full_name||'').trim().toLowerCase()==='yasin patel'
   const [pupils,setPupils]=useState([]);const [show,setShow]=useState(false)
   const [q,setQ]=useState('');const [sel,setSel]=useState(null)
-  const [kind,setKind]=useState('break');const today=new Date().toISOString().slice(0,10);const [date,setDate]=useState(today)
+  const [kind,setKind]=useState('break');const today=new Date(Date.now()-new Date().getTimezoneOffset()*60000).toISOString().slice(0,10);const [date,setDate]=useState(today)
   const [mode,setMode]=useState('notify');const [note,setNote]=useState('')
   const [aBusy,setABusy]=useState(false);const [toast,setToast]=useState('')
   const fire=m=>{setToast(m);setTimeout(()=>setToast(''),4000)}
@@ -2668,7 +2668,7 @@ function WeeklyMarks({profile}){
     const CL={is:'Islamic Studies',ph:'Pre-Hifz'}
     const wkd=s=>(s.split('|')[1]||s)
     const weeks=[...new Map(rws.map(x=>[x.send_key,{sk:x.send_key,label:x.week_label||x.send_key}])).values()].sort((a,b)=>wkd(a.sk)<wkd(b.sk)?-1:1)
-    const q=v=>{const s=String(v==null?'':v);return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s}
+    const q=v=>{let s=String(v==null?'':v);if(/^[=+\-@\t\r]/.test(s)&&!/^-?(\d+(\.\d+)?%?)?$/.test(s))s="'"+s;return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s}
     const head=['Class','Boy','Year',...weeks.map(w=>w.label),'Average %']
     const out=[head.map(q).join(',')]
     for(const cc of ['is','ph']){

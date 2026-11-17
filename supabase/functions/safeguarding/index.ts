@@ -14,7 +14,10 @@ Deno.serve(async (req) => {
     const asUser = createClient(url, Deno.env.get("SUPABASE_ANON_KEY")!, { db: { schema: "parent_hub" }, global: { headers: { Authorization: req.headers.get("Authorization") ?? "" } } });
     const { data: { user } } = await asUser.auth.getUser();
     if (!user) return json({ error: "not signed in" }, 401);
-    const { data: me } = await svc.from("profiles").select("role,email,full_name").eq("id", user.id).single();
+    const { data: meRow } = await svc.from("profiles").select("role,email,full_name,is_active").eq("id", user.id).single();
+    // Only active staff/admin accounts can hold any of the permissions below, and email allow-lists are matched
+    // against the verified auth email — profiles.email/full_name are user-editable and must not grant access.
+    const me: any = meRow && ["admin", "staff"].includes(meRow.role) && meRow.is_active !== false ? { ...meRow, email: user.email ?? "" } : null;
     if (!me || !["admin", "staff"].includes(me.role)) return json({ error: "staff only" }, 403);
     const em = (me.email || "").toLowerCase(), nm = (me.full_name || "").trim().toLowerCase();
     const canView = SAFE_NAMES.includes(nm) || SAFE_EMAILS.includes(em);
