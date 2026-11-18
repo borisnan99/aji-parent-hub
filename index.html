@@ -1984,8 +1984,8 @@ function Dashboard({profile,onSignOut}){
         <div style=${{color:'#AEBAD0',fontSize:10}}>Al Jamiatul Islamiyah</div></div></div>
       <button onClick=${onSignOut} style=${{background:'transparent',border:'1px solid rgba(255,255,255,.3)',color:'#fff',borderRadius:10,padding:'6px 10px',fontSize:12,cursor:'pointer'}}>Sign out</button></div>
     <div style=${{height:3,background:`linear-gradient(90deg,${C.gold},${C.goldSoft})`}}></div>
-    <div style=${{padding:'8px 16px 0',display:'flex',gap:8,flexWrap:'wrap'}}>${['overview','notices','pupils','attendance','league',...(canManage?['engagement']:[]),'praise','detentions','behaviour','safeguarding',...(canMedFire?['medical','firedrills']:[]),...(canIncident?['incidents']:[]),...(canBoarding?['boarding']:[]),...(canSup?['supervisor']:[]),...(canKit?['kitchen']:[]),...((canManage||examAccess)?['marks']:[]),...(canManage?['dataprotection','users']:[]),'announce','inbox'].map(t=>html`
-      <button key=${t} onClick=${()=>setTab(t)} class="chip ${tab===t?'on':''}">${t==='overview'?'Overview':t==='notices'?'Notices':t==='pupils'?'Pupils':t==='attendance'?'Attendance':t==='league'?'League':t==='engagement'?'Engagement':t==='praise'?'Praise':t==='detentions'?'Detentions':t==='behaviour'?'Behaviour':t==='safeguarding'?'Safeguarding':t==='medical'?'Medical':t==='firedrills'?'Fire drills':t==='incidents'?'Injuries':t==='boarding'?'Boarding':t==='supervisor'?'Supervisor':t==='kitchen'?'Kitchen':t==='marks'?'Exam marks':t==='dataprotection'?'Data protection':t==='users'?'Users':t==='announce'?'Announce':'Inbox'}</button>`)}</div>
+    <div style=${{padding:'8px 16px 0',display:'flex',gap:8,flexWrap:'wrap'}}>${['overview','notices','calendar','pupils','attendance','league',...(canManage?['engagement']:[]),'praise','detentions','behaviour','safeguarding',...(canMedFire?['medical','firedrills']:[]),...(canIncident?['incidents']:[]),...(canBoarding?['boarding']:[]),...(canSup?['supervisor']:[]),...(canKit?['kitchen']:[]),...((canManage||examAccess)?['marks']:[]),...(canManage?['dataprotection','users']:[]),'announce','inbox'].map(t=>html`
+      <button key=${t} onClick=${()=>setTab(t)} class="chip ${tab===t?'on':''}">${t==='overview'?'Overview':t==='notices'?'Notices':t==='calendar'?'Calendar':t==='pupils'?'Pupils':t==='attendance'?'Attendance':t==='league'?'League':t==='engagement'?'Engagement':t==='praise'?'Praise':t==='detentions'?'Detentions':t==='behaviour'?'Behaviour':t==='safeguarding'?'Safeguarding':t==='medical'?'Medical':t==='firedrills'?'Fire drills':t==='incidents'?'Injuries':t==='boarding'?'Boarding':t==='supervisor'?'Supervisor':t==='kitchen'?'Kitchen':t==='marks'?'Exam marks':t==='dataprotection'?'Data protection':t==='users'?'Users':t==='announce'?'Announce':'Inbox'}</button>`)}</div>
     <div style=${{padding:16}}>
       ${pupils===null&&html`<div class="muted">Loading live data…</div>`}
       ${tab==='overview'&&pupils&&html`<div>
@@ -2031,6 +2031,7 @@ function Dashboard({profile,onSignOut}){
       ${tab==='users'&&canManage&&html`<${Users} profile=${profile}/>`}
       ${tab==='marks'&&(canManage||examAccess)&&html`<${WeeklyMarks} profile=${profile}/>`}
       ${tab==='notices'&&html`<${StaffNotices} profile=${profile}/>`}
+      ${tab==='calendar'&&html`<${SchoolCalendar} profile=${profile} canManage=${canManage}/>`}
       ${editPupil&&html`<${PupilEditor} pupil=${editPupil} classes=${classes} onClose=${()=>setEditPupil(null)} onSaved=${m=>{setEditPupil(null);fire(m);load()}}/>`}
     </div>
     <${PrivacyFooter} staff=${true}/>
@@ -2198,6 +2199,7 @@ function ParentApp({profile,onSignOut}){
     <div style=${{padding:16}}>
       <${NotifyCard} userId=${profile.id} fire=${fire}/>
       <${SchoolFeed}/>
+      <div style=${{margin:'8px 0 14px'}}><${SchoolCalendar} profile=${profile} canManage=${false}/></div>
       <h2 class="serif" style=${{color:C.navy,margin:'6px 0 2px'}}>Message the school</h2>
       <p class="muted" style=${{fontSize:12,marginTop:0}}>Private — only you and the school office can see this.</p>
       ${cid===undefined?html`<div class="muted">Loading…</div>`:html`<${Thread} conversationId=${cid} isStaff=${false}/>`}
@@ -2849,6 +2851,85 @@ function StaffNotices({profile}){
       </div>`})}
     </div>`}
     ${toast&&html`<div style=${{position:'fixed',left:'50%',bottom:24,transform:'translateX(-50%)',background:'#0E1D38',color:'#fff',padding:'10px 16px',borderRadius:999,fontSize:14,maxWidth:'90%',textAlign:'center'}}>${toast}</div>`}
+  </div>`}
+
+const CAL_CATS={
+  term:{t:'Term',bg:'#14294D',fg:'#fff'},
+  fee:{t:'Fees',bg:'#C0392B',fg:'#fff'},
+  inset:{t:'Inset',bg:'#6E6A60',fg:'#fff'},
+  holiday:{t:'Holiday',bg:'#2E7D8A',fg:'#fff'},
+  eid:{t:'Eid',bg:'#2E7D46',fg:'#fff'},
+  islamic:{t:'Islamic',bg:'#C4A24C',fg:'#3a2d00'},
+  assessment:{t:'Assessment',bg:'#B5651D',fg:'#fff'},
+  exam:{t:'Exam',bg:'#6C3BAA',fg:'#fff'},
+  parents:{t:"Parents' morning",bg:'#B03A7A',fg:'#fff'},
+  jalsah:{t:'Jalsah',bg:'#14294D',fg:'#fff'},
+  other:{t:'Event',bg:'#8A8578',fg:'#fff'}
+}
+function SchoolCalendar({profile,canManage}){
+  const [events,setEvents]=useState(null);const [showAll,setShowAll]=useState(false)
+  const [ed,setEd]=useState(null);const [busy,setBusy]=useState(false);const [toast,setToast]=useState('')
+  const fire=m=>{setToast(m);setTimeout(()=>setToast(''),3000)}
+  async function load(){const {data}=await sb.functions.invoke('calendar',{body:{action:'list'}});if(data&&data.ok)setEvents(data.events||[])}
+  useEffect(()=>{load()},[])
+  const today=new Date(Date.now()-new Date().getTimezoneOffset()*60000).toISOString().slice(0,10)
+  const dLbl=s=>{const [y,m,da]=s.split('-');return new Date(+y,+m-1,+da).toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'})}
+  const fmtRange=e=>e.end_date&&e.end_date!==e.start_date?dLbl(e.start_date)+' – '+dLbl(e.end_date):dLbl(e.start_date)
+  const mKey=s=>s.slice(0,7)
+  const mLbl=k=>{const [y,m]=k.split('-');return new Date(+y,+m-1,1).toLocaleDateString('en-GB',{month:'long',year:'numeric'})}
+  const visible=(events||[]).filter(e=>showAll||(e.end_date||e.start_date)>=today)
+  const groups={};visible.forEach(e=>{(groups[mKey(e.start_date)]=groups[mKey(e.start_date)]||[]).push(e)})
+  const mKeys=Object.keys(groups).sort()
+  async function save(){const f=ed;if(!(f.title||'').trim()||!f.start_date){fire('Title and start date needed');return}setBusy(true)
+    const {data,error}=await sb.functions.invoke('calendar',{body:{action:'save',id:f.id,title:f.title.trim(),start_date:f.start_date,end_date:f.end_date||'',category:f.category||'other',audience:f.audience||'all',note:(f.note||'').trim()}})
+    setBusy(false);if(error||(data&&data.error)){fire((data&&data.error)||'Error');return}
+    setEd(null);fire('Saved');load()}
+  async function del(id){if(!window.confirm('Delete this event?'))return;const {data,error}=await sb.functions.invoke('calendar',{body:{action:'delete',id}});if(error||(data&&data.error)){fire((data&&data.error)||'Error');return}fire('Deleted');load()}
+  if(events===null)return html`<div class="muted">Loading calendar…</div>`
+  return html`<div>
+    <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,flexWrap:'wrap'}}>
+      <h2 class="serif" style=${{color:C.navy,margin:'4px 0'}}>School calendar</h2>
+      <div style=${{display:'flex',gap:6}}>
+        <button class="chip ${showAll?'':'on'}" onClick=${()=>setShowAll(false)}>Upcoming</button>
+        <button class="chip ${showAll?'on':''}" onClick=${()=>setShowAll(true)}>Full year</button>
+      </div>
+    </div>
+    ${canManage&&html`<button class="btn gold" style=${{marginBottom:8,marginTop:4}} onClick=${()=>setEd({category:'other',audience:'all',start_date:today})}>+ Add event</button>`}
+    ${canManage&&html`<div class="muted" style=${{fontSize:11,marginBottom:10,lineHeight:1.5}}>Items marked <b>Staff only</b> (⚠) are drafts only staff can see. Check the dates, then set them to <b>Everyone</b> so parents see them.</div>`}
+    ${mKeys.length===0&&html`<div class="card muted" style=${{padding:16}}>No events ${showAll?'on the calendar':'coming up'}.</div>`}
+    ${mKeys.map(mk=>html`<div key=${mk} style=${{marginBottom:12}}>
+      <div class="lbl" style=${{color:C.navy,fontWeight:700,marginBottom:4}}>${mLbl(mk)}</div>
+      ${groups[mk].map(e=>{const c=CAL_CATS[e.category]||CAL_CATS.other;return html`<div key=${e.id} class="card" style=${{padding:'9px 11px',marginBottom:6,display:'flex',gap:10,alignItems:'flex-start',borderLeft:'4px solid '+c.bg}}>
+        <div style=${{flex:1,minWidth:0}}>
+          <div style=${{display:'flex',gap:6,alignItems:'center',flexWrap:'wrap'}}><b style=${{fontSize:14}}>${e.title}</b><span class="tag" style=${{background:c.bg,color:c.fg,padding:'2px 8px',fontSize:10}}>${c.t}</span>${e.audience==='staff'?html`<span class="tag" style=${{background:'#FBECC9',color:'#8A6D1B',padding:'2px 8px',fontSize:10}}>Staff only</span>`:e.audience==='parents'?html`<span class="tag" style=${{background:'#E8EEF6',color:C.navy,padding:'2px 8px',fontSize:10}}>Parents</span>`:''}</div>
+          <div class="muted" style=${{fontSize:12,marginTop:2}}>📅 ${fmtRange(e)}</div>
+          ${e.note?html`<div class="muted" style=${{fontSize:11,marginTop:2}}>${e.note}</div>`:''}
+        </div>
+        ${canManage&&html`<div style=${{display:'flex',gap:4,flexShrink:0}}><button class="chip" style=${{padding:'3px 8px'}} onClick=${()=>setEd({...e})}>✏️</button><button class="chip" style=${{padding:'3px 8px',color:C.urgent}} onClick=${()=>del(e.id)}>🗑</button></div>`}
+      </div>`})}
+    </div>`)}
+    ${ed&&html`<div style=${{position:'fixed',inset:0,background:'rgba(10,15,30,.45)',display:'flex',alignItems:'flex-start',justifyContent:'center',padding:16,zIndex:60,overflow:'auto'}} onClick=${e=>{if(e.target===e.currentTarget)setEd(null)}}>
+      <div class="card" style=${{maxWidth:460,width:'100%',padding:16,marginTop:24}}>
+        <h3 class="serif" style=${{color:C.navy,marginTop:0}}>${ed.id?'Edit event':'New event'}</h3>
+        <div class="lbl">Title</div>
+        <input class="in" value=${ed.title||''} onInput=${e=>setEd(d=>({...d,title:e.target.value}))}/>
+        <div style=${{display:'flex',gap:8}}>
+          <div style=${{flex:1}}><div class="lbl" style=${{marginTop:10}}>Start</div><input class="in" type="date" value=${ed.start_date||''} onInput=${e=>setEd(d=>({...d,start_date:e.target.value}))}/></div>
+          <div style=${{flex:1}}><div class="lbl" style=${{marginTop:10}}>End <span class="muted" style=${{fontWeight:400}}>(optional)</span></div><input class="in" type="date" value=${ed.end_date||''} onInput=${e=>setEd(d=>({...d,end_date:e.target.value}))}/></div>
+        </div>
+        <div class="lbl" style=${{marginTop:10}}>Type</div>
+        <select class="in" value=${ed.category||'other'} onChange=${e=>setEd(d=>({...d,category:e.target.value}))}>${Object.keys(CAL_CATS).map(k=>html`<option key=${k} value=${k}>${CAL_CATS[k].t}</option>`)}</select>
+        <div class="lbl" style=${{marginTop:10}}>Who sees it</div>
+        <select class="in" value=${ed.audience||'all'} onChange=${e=>setEd(d=>({...d,audience:e.target.value}))}><option value="all">Everyone (parents & staff)</option><option value="parents">Parents only</option><option value="staff">Staff only (draft)</option></select>
+        <div class="lbl" style=${{marginTop:10}}>Note <span class="muted" style=${{fontWeight:400}}>(optional)</span></div>
+        <textarea class="in" style=${{minHeight:50,resize:'vertical',fontFamily:'inherit'}} value=${ed.note||''} onInput=${e=>setEd(d=>({...d,note:e.target.value}))}></textarea>
+        <div style=${{display:'flex',gap:8,marginTop:14}}>
+          <button class="btn gold" style=${{flex:1}} disabled=${busy} onClick=${save}>${busy?'Saving…':'Save'}</button>
+          <button class="btn ghost" onClick=${()=>setEd(null)}>Cancel</button>
+        </div>
+      </div>
+    </div>`}
+    ${toast&&html`<div style=${{position:'fixed',left:'50%',bottom:24,transform:'translateX(-50%)',background:'#0E1D38',color:'#fff',padding:'10px 16px',borderRadius:999,fontSize:14,zIndex:70}}>${toast}</div>`}
   </div>`}
 
 function App(){
