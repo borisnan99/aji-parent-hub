@@ -1984,8 +1984,8 @@ function Dashboard({profile,onSignOut}){
         <div style=${{color:'#AEBAD0',fontSize:10}}>Al Jamiatul Islamiyah</div></div></div>
       <button onClick=${onSignOut} style=${{background:'transparent',border:'1px solid rgba(255,255,255,.3)',color:'#fff',borderRadius:10,padding:'6px 10px',fontSize:12,cursor:'pointer'}}>Sign out</button></div>
     <div style=${{height:3,background:`linear-gradient(90deg,${C.gold},${C.goldSoft})`}}></div>
-    <div style=${{padding:'8px 16px 0',display:'flex',gap:8,flexWrap:'wrap'}}>${['overview','notices','calendar','pupils','attendance','league',...(canManage?['engagement']:[]),'praise','detentions','behaviour','safeguarding',...(canMedFire?['medical','firedrills']:[]),...(canIncident?['incidents']:[]),...(canBoarding?['boarding']:[]),...(canSup?['supervisor']:[]),...(canKit?['kitchen']:[]),...((canManage||examAccess)?['marks']:[]),...(canManage?['dataprotection','users']:[]),'announce','inbox'].map(t=>html`
-      <button key=${t} onClick=${()=>setTab(t)} class="chip ${tab===t?'on':''}">${t==='overview'?'Overview':t==='notices'?'Notices':t==='calendar'?'Calendar':t==='pupils'?'Pupils':t==='attendance'?'Attendance':t==='league'?'League':t==='engagement'?'Engagement':t==='praise'?'Praise':t==='detentions'?'Detentions':t==='behaviour'?'Behaviour':t==='safeguarding'?'Safeguarding':t==='medical'?'Medical':t==='firedrills'?'Fire drills':t==='incidents'?'Injuries':t==='boarding'?'Boarding':t==='supervisor'?'Supervisor':t==='kitchen'?'Kitchen':t==='marks'?'Exam marks':t==='dataprotection'?'Data protection':t==='users'?'Users':t==='announce'?'Announce':'Inbox'}</button>`)}</div>
+    <div style=${{padding:'8px 16px 0',display:'flex',gap:8,flexWrap:'wrap'}}>${['overview','notices','calendar','parents','pupils','attendance','league',...(canManage?['engagement']:[]),'praise','detentions','behaviour','safeguarding',...(canMedFire?['medical','firedrills']:[]),...(canIncident?['incidents']:[]),...(canBoarding?['boarding']:[]),...(canSup?['supervisor']:[]),...(canKit?['kitchen']:[]),...((canManage||examAccess)?['marks']:[]),...(canManage?['dataprotection','users']:[]),'announce','inbox'].map(t=>html`
+      <button key=${t} onClick=${()=>setTab(t)} class="chip ${tab===t?'on':''}">${t==='overview'?'Overview':t==='notices'?'Notices':t==='calendar'?'Calendar':t==='parents'?'Parents’ Morning':t==='pupils'?'Pupils':t==='attendance'?'Attendance':t==='league'?'League':t==='engagement'?'Engagement':t==='praise'?'Praise':t==='detentions'?'Detentions':t==='behaviour'?'Behaviour':t==='safeguarding'?'Safeguarding':t==='medical'?'Medical':t==='firedrills'?'Fire drills':t==='incidents'?'Injuries':t==='boarding'?'Boarding':t==='supervisor'?'Supervisor':t==='kitchen'?'Kitchen':t==='marks'?'Exam marks':t==='dataprotection'?'Data protection':t==='users'?'Users':t==='announce'?'Announce':'Inbox'}</button>`)}</div>
     <div style=${{padding:16}}>
       ${pupils===null&&html`<div class="muted">Loading live data…</div>`}
       ${tab==='overview'&&pupils&&html`<div>
@@ -2032,6 +2032,7 @@ function Dashboard({profile,onSignOut}){
       ${tab==='marks'&&(canManage||examAccess)&&html`<${WeeklyMarks} profile=${profile}/>`}
       ${tab==='notices'&&html`<${StaffNotices} profile=${profile}/>`}
       ${tab==='calendar'&&html`<${SchoolCalendar} profile=${profile} canManage=${canManage}/>`}
+      ${tab==='parents'&&html`<${ParentsMorning} profile=${profile} canManage=${canManage}/>`}
       ${editPupil&&html`<${PupilEditor} pupil=${editPupil} classes=${classes} onClose=${()=>setEditPupil(null)} onSaved=${m=>{setEditPupil(null);fire(m);load()}}/>`}
     </div>
     <${PrivacyFooter} staff=${true}/>
@@ -2199,6 +2200,7 @@ function ParentApp({profile,onSignOut}){
     <div style=${{padding:16}}>
       <${NotifyCard} userId=${profile.id} fire=${fire}/>
       <${SchoolFeed}/>
+      <${ParentsMorningCard} profile=${profile}/>
       <div style=${{margin:'8px 0 14px'}}><${SchoolCalendar} profile=${profile} canManage=${false}/></div>
       <h2 class="serif" style=${{color:C.navy,margin:'6px 0 2px'}}>Message the school</h2>
       <p class="muted" style=${{fontSize:12,marginTop:0}}>Private — only you and the school office can see this.</p>
@@ -2929,6 +2931,167 @@ function SchoolCalendar({profile,canManage}){
         </div>
       </div>
     </div>`}
+    ${toast&&html`<div style=${{position:'fixed',left:'50%',bottom:24,transform:'translateX(-50%)',background:'#0E1D38',color:'#fff',padding:'10px 16px',borderRadius:999,fontSize:14,zIndex:70}}>${toast}</div>`}
+  </div>`}
+
+function ParentsMorning({profile,canManage}){
+  const [d,setD]=useState(null);const [busy,setBusy]=useState(false);const [toast,setToast]=useState('')
+  const [edit,setEdit]=useState(false);const [sf,setSf]=useState(null);const [tlist,setTlist]=useState(null)
+  const fire=m=>{setToast(m);setTimeout(()=>setToast(''),3000)}
+  async function load(){const {data}=await sb.functions.invoke('parents-evening',{body:{action:'list'}});if(data&&data.ok)setD(data)}
+  useEffect(()=>{load()},[])
+  const today=new Date(Date.now()-new Date().getTimezoneOffset()*60000).toISOString().slice(0,10)
+  const dLbl=s=>{if(!s)return '';const [y,m,da]=s.split('-');return new Date(+y,+m-1,+da).toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long',year:'numeric'})}
+  const hm=t=>t?t.slice(0,5):''
+  const audStr=a=>{const cls=(a||[]).filter(x=>x.type==='class').map(x=>x.value);const yr=(a||[]).filter(x=>x.type==='year').map(x=>x.value);return [...yr,...cls].join(', ')||'— nobody yet'}
+  if(d===null)return html`<div class="muted">Loading…</div>`
+  const ses=d.session
+  async function saveSession(){const f=sf;if(!(f.title||'').trim()||!f.session_date||!f.start_time||!f.end_time){fire('Fill title, date, start and end');return}setBusy(true)
+    const {data,error}=await sb.functions.invoke('parents-evening',{body:{action:'save_session',id:f.id,title:f.title.trim(),session_date:f.session_date,start_time:f.start_time,end_time:f.end_time,slot_minutes:f.slot_minutes||5,location:f.location||'',note:f.note||''}})
+    setBusy(false);if(error||(data&&data.error)){fire((data&&data.error)||'Error');return};setEdit(false);fire('Saved');load()}
+  async function toggleOpen(){setBusy(true);const {data,error}=await sb.functions.invoke('parents-evening',{body:{action:'set_open',session_id:ses.id,is_open:!ses.is_open}});setBusy(false);if(error||(data&&data.error)){fire((data&&data.error)||'Error');return};fire(ses.is_open?'Closed for parents':'Open — parents can book now');load()}
+  async function delSession(){if(!window.confirm('Delete this Parents’ Morning and all its bookings?'))return;await sb.functions.invoke('parents-evening',{body:{action:'delete_session',session_id:ses.id}});setTlist(null);fire('Deleted');load()}
+  function startTeachers(){setTlist((d.teachers||[]).map(t=>({teacher_id:t.teacher_id,room:t.room||'',audience:(t.audience||[]).slice()})))}
+  function addRow(){setTlist(l=>[...l,{teacher_id:'',room:'',audience:[]}])}
+  function setRow(i,patch){setTlist(l=>l.map((r,x)=>x===i?{...r,...patch}:r))}
+  function rmRow(i){setTlist(l=>l.filter((_,x)=>x!==i))}
+  function toggleAud(i,type,value){setTlist(l=>l.map((r,x)=>{if(x!==i)return r;const has=r.audience.some(a=>a.type===type&&a.value===value);return {...r,audience:has?r.audience.filter(a=>!(a.type===type&&a.value===value)):[...r.audience,{type,value}]}}))}
+  async function saveTeachers(){setBusy(true);const payload=tlist.filter(t=>t.teacher_id)
+    const {data,error}=await sb.functions.invoke('parents-evening',{body:{action:'save_teachers',session_id:ses.id,teachers:payload}})
+    setBusy(false);if(error||(data&&data.error)){fire((data&&data.error)||'Error');return};setTlist(null);fire('Teachers saved');load()}
+  function printList(){const rows=(d.teachers||[]).map(t=>{const body=(t.bookings||[]).map(b=>`<tr><td>${hm(b.slot_time)}</td><td>${b.pupil_name} <small>(${b.pupil_year||''})</small></td><td>${b.parent_name||''}</td></tr>`).join('')||'<tr><td colspan=3><i>No bookings yet</i></td></tr>';return `<h2 style="margin:18px 0 4px">${t.name}${t.room?' — '+t.room:''}</h2><table style="border-collapse:collapse;width:100%" border="1" cellpadding="6"><tr style="background:#eee"><th align=left>Time</th><th align=left>Pupil</th><th align=left>Parent</th></tr>${body}</table>`}).join('')
+    const w=window.open('','_blank');if(!w){fire('Allow pop-ups to print');return};w.document.write(`<title>${ses.title}</title><body style="font-family:system-ui,sans-serif;max-width:720px;margin:20px auto"><h1 style="margin:0">${ses.title}</h1><div>${dLbl(ses.session_date)} · ${hm(ses.start_time)}–${hm(ses.end_time)}${ses.location?' · '+ses.location:''}</div>${rows}</body>`);w.document.close();w.focus();setTimeout(()=>w.print(),250)}
+
+  // ---- plain teacher (not a manager): own schedule only ----
+  if(!canManage){
+    if(!ses)return html`<div class="card muted" style=${{padding:16}}>No Parents’ Morning is set up yet.</div>`
+    const mine=d.teachers||[]
+    return html`<div>
+      <h2 class="serif" style=${{color:C.navy,margin:'4px 0'}}>Parents’ Morning</h2>
+      <div class="muted" style=${{fontSize:13,marginBottom:10}}>${dLbl(ses.session_date)} · ${hm(ses.start_time)}–${hm(ses.end_time)}${ses.location?' · '+ses.location:''}</div>
+      ${mine.length===0&&html`<div class="card muted" style=${{padding:16}}>You are not listed for this Parents’ Morning.</div>`}
+      ${mine.map(t=>html`<div key=${t.id} class="card" style=${{padding:'12px 14px',marginBottom:10}}>
+        <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center'}}><b>${t.name}${t.room?' · '+t.room:''}</b><span class="tag" style=${{background:C.navy,color:'#fff'}}>${(t.bookings||[]).length} booked</span></div>
+        ${(t.bookings||[]).length?html`<table style=${{width:'100%',borderCollapse:'collapse',marginTop:8,fontSize:13}}>${t.bookings.map(b=>html`<tr key=${b.booking_id}><td style=${{padding:'3px 0',width:60,fontWeight:700,color:C.navy}}>${hm(b.slot_time)}</td><td>${b.pupil_name} <span class="muted">(${b.pupil_year||''})</span></td></tr>`)}</table>`:html`<div class="muted" style=${{fontSize:12,marginTop:6}}>No bookings yet.</div>`}
+      </div>`)}
+      ${mine.length>0&&html`<button class="btn ghost" onClick=${printList}>🖨 Print my list</button>`}
+      ${toast&&html`<div style=${{position:'fixed',left:'50%',bottom:24,transform:'translateX(-50%)',background:'#0E1D38',color:'#fff',padding:'10px 16px',borderRadius:999,fontSize:14,zIndex:70}}>${toast}</div>`}
+    </div>`
+  }
+
+  // ---- manager: full setup ----
+  return html`<div>
+    <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,flexWrap:'wrap'}}>
+      <h2 class="serif" style=${{color:C.navy,margin:'4px 0'}}>Parents’ Morning</h2>
+      ${ses&&html`<div style=${{display:'flex',gap:6,flexWrap:'wrap'}}><button class="chip" onClick=${()=>{setSf({...ses,start_time:hm(ses.start_time),end_time:hm(ses.end_time)});setEdit(true)}}>✏️ Edit</button><button class="chip" style=${{color:C.urgent}} onClick=${delSession}>🗑 Delete</button></div>`}
+    </div>
+    ${!ses&&html`<div class="card" style=${{padding:16}}>
+      <p style=${{marginTop:0}} class="muted">Set up a Parents’ Morning. Add it, choose the teachers and who each one sees, then open it so parents can book 5-minute slots.</p>
+      <button class="btn gold" onClick=${()=>{setSf({title:'Parents’ Morning',session_date:'',start_time:'09:00',end_time:'11:30',slot_minutes:5,location:''});setEdit(true)}}>+ Set up Parents’ Morning</button>
+    </div>`}
+    ${ses&&html`<div class="card" style=${{padding:'14px 16px',marginBottom:14,borderLeft:'4px solid '+(ses.is_open?'#2E7D32':C.gold)}}>
+      <div style=${{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:8,flexWrap:'wrap'}}>
+        <div><div class="serif" style=${{color:C.navy,fontWeight:700,fontSize:16}}>${ses.title}</div>
+          <div class="muted" style=${{fontSize:13,marginTop:2}}>${dLbl(ses.session_date)}</div>
+          <div class="muted" style=${{fontSize:13}}>${hm(ses.start_time)}–${hm(ses.end_time)} · ${ses.slot_minutes}-minute slots${ses.location?' · '+ses.location:''}</div>
+          ${ses.note?html`<div class="muted" style=${{fontSize:12,marginTop:3}}>${ses.note}</div>`:''}</div>
+        <span class="tag" style=${{background:ses.is_open?'#E4F3E5':'#FBECC9',color:ses.is_open?'#2E7D32':'#8A6D1B'}}>${ses.is_open?'OPEN — parents can book':'DRAFT — not visible to parents'}</span>
+      </div>
+      <button class="btn ${ses.is_open?'ghost':'gold'}" style=${{marginTop:12}} disabled=${busy} onClick=${toggleOpen}>${ses.is_open?'Close booking':'Open for parents'}</button>
+    </div>`}
+
+    ${ses&&tlist===null&&html`<div style=${{marginBottom:14}}>
+      <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center'}}><h3 class="serif" style=${{color:C.navy,margin:'0 0 8px'}}>Teachers &amp; who they see</h3><button class="chip" onClick=${startTeachers}>Edit teachers</button></div>
+      ${(d.teachers||[]).length===0&&html`<div class="card muted" style=${{padding:14}}>No teachers added yet. Tap <b>Edit teachers</b> to add them.</div>`}
+      ${(d.teachers||[]).map(t=>html`<div key=${t.id} class="card" style=${{padding:'10px 13px',marginBottom:6}}>
+        <div style=${{display:'flex',justifyContent:'space-between',gap:8}}><b>${t.name}${t.room?html` <span class="muted">· ${t.room}</span>`:''}</b><span class="tag" style=${{background:'#EEF',color:C.navy}}>${(t.bookings||[]).length} booked</span></div>
+        <div class="muted" style=${{fontSize:12,marginTop:3}}>Seen by: ${audStr(t.audience)}</div>
+      </div>`)}
+    </div>`}
+
+    ${ses&&tlist!==null&&html`<div class="card" style=${{padding:'12px 14px',marginBottom:14}}>
+      <h3 class="serif" style=${{color:C.navy,margin:'0 0 4px'}}>Teachers at this Parents’ Morning</h3>
+      <div class="muted" style=${{fontSize:11,marginBottom:10,lineHeight:1.5}}>For each teacher, tick the <b>years</b> and/or <b>morning classes</b> whose parents should see them. A boy’s parents see every teacher that matches his year or his morning class.</div>
+      ${tlist.map((r,i)=>html`<div key=${i} style=${{border:'1px solid #E3E8F0',borderRadius:12,padding:'10px 12px',marginBottom:10}}>
+        <div style=${{display:'flex',gap:8,alignItems:'center'}}>
+          <select class="in" style=${{flex:1}} value=${r.teacher_id} onChange=${e=>setRow(i,{teacher_id:e.target.value})}>
+            <option value="">— choose teacher —</option>
+            ${(d.staff||[]).map(s=>html`<option key=${s.id} value=${s.id}>${s.full_name}${s.title?' — '+s.title:''}</option>`)}
+          </select>
+          <button class="chip" style=${{color:C.urgent}} onClick=${()=>rmRow(i)}>✕</button>
+        </div>
+        <input class="in" style=${{marginTop:8}} placeholder="Room (optional, e.g. Room 3)" value=${r.room} onInput=${e=>setRow(i,{room:e.target.value})}/>
+        <div class="lbl" style=${{marginTop:8}}>Years</div>
+        <div style=${{display:'flex',flexWrap:'wrap',gap:6}}>${(d.years||[]).map(y=>html`<button key=${y} class="chip ${r.audience.some(a=>a.type==='year'&&a.value===y)?'on':''}" style=${{padding:'4px 10px'}} onClick=${()=>toggleAud(i,'year',y)}>${y}</button>`)}</div>
+        <div class="lbl" style=${{marginTop:8}}>Morning classes</div>
+        <div style=${{display:'flex',flexWrap:'wrap',gap:6}}>${(d.classes||[]).map(c=>html`<button key=${c} class="chip ${r.audience.some(a=>a.type==='class'&&a.value===c)?'on':''}" style=${{padding:'4px 10px'}} onClick=${()=>toggleAud(i,'class',c)}>${c}</button>`)}</div>
+      </div>`)}
+      <button class="chip" onClick=${addRow}>+ Add teacher</button>
+      <div style=${{display:'flex',gap:8,marginTop:12}}><button class="btn gold" style=${{flex:1}} disabled=${busy} onClick=${saveTeachers}>${busy?'Saving…':'Save teachers'}</button><button class="btn ghost" onClick=${()=>setTlist(null)}>Cancel</button></div>
+    </div>`}
+
+    ${ses&&tlist===null&&(d.teachers||[]).length>0&&html`<div>
+      <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center'}}><h3 class="serif" style=${{color:C.navy,margin:'0 0 8px'}}>Bookings</h3><button class="btn ghost" onClick=${printList}>🖨 Print all</button></div>
+      ${(d.teachers||[]).map(t=>html`<div key=${t.id} class="card" style=${{padding:'10px 13px',marginBottom:8}}>
+        <div style=${{display:'flex',justifyContent:'space-between'}}><b>${t.name}${t.room?' · '+t.room:''}</b><span class="muted" style=${{fontSize:12}}>${(t.bookings||[]).length} booked</span></div>
+        ${(t.bookings||[]).length?html`<table style=${{width:'100%',borderCollapse:'collapse',marginTop:6,fontSize:13}}>${t.bookings.map(b=>html`<tr key=${b.booking_id}><td style=${{padding:'3px 0',width:56,fontWeight:700,color:C.navy}}>${hm(b.slot_time)}</td><td>${b.pupil_name} <span class="muted">(${b.pupil_year||''})</span></td><td class="muted" style=${{textAlign:'right',fontSize:11}}>${b.parent_name||''}</td></tr>`)}</table>`:html`<div class="muted" style=${{fontSize:12,marginTop:4}}>No bookings yet.</div>`}
+      </div>`)}
+    </div>`}
+
+    ${edit&&html`<div style=${{position:'fixed',inset:0,background:'rgba(10,15,30,.45)',display:'flex',alignItems:'flex-start',justifyContent:'center',padding:16,zIndex:60,overflow:'auto'}} onClick=${e=>{if(e.target===e.currentTarget)setEdit(false)}}>
+      <div class="card" style=${{maxWidth:460,width:'100%',padding:16,marginTop:24}}>
+        <h3 class="serif" style=${{color:C.navy,marginTop:0}}>${sf.id?'Edit Parents’ Morning':'New Parents’ Morning'}</h3>
+        <div class="lbl">Title</div><input class="in" value=${sf.title||''} onInput=${e=>setSf(d=>({...d,title:e.target.value}))}/>
+        <div class="lbl" style=${{marginTop:10}}>Date</div><input class="in" type="date" value=${sf.session_date||''} onInput=${e=>setSf(d=>({...d,session_date:e.target.value}))}/>
+        <div style=${{display:'flex',gap:8}}>
+          <div style=${{flex:1}}><div class="lbl" style=${{marginTop:10}}>Start</div><input class="in" type="time" value=${sf.start_time||''} onInput=${e=>setSf(d=>({...d,start_time:e.target.value}))}/></div>
+          <div style=${{flex:1}}><div class="lbl" style=${{marginTop:10}}>End</div><input class="in" type="time" value=${sf.end_time||''} onInput=${e=>setSf(d=>({...d,end_time:e.target.value}))}/></div>
+          <div style=${{width:96}}><div class="lbl" style=${{marginTop:10}}>Slot (min)</div><input class="in" type="number" min="3" value=${sf.slot_minutes||5} onInput=${e=>setSf(d=>({...d,slot_minutes:+e.target.value||5}))}/></div>
+        </div>
+        <div class="lbl" style=${{marginTop:10}}>Location <span class="muted" style=${{fontWeight:400}}>(optional)</span></div><input class="in" placeholder="e.g. Main hall" value=${sf.location||''} onInput=${e=>setSf(d=>({...d,location:e.target.value}))}/>
+        <div class="lbl" style=${{marginTop:10}}>Note to parents <span class="muted" style=${{fontWeight:400}}>(optional)</span></div><textarea class="in" style=${{minHeight:46,resize:'vertical',fontFamily:'inherit'}} value=${sf.note||''} onInput=${e=>setSf(d=>({...d,note:e.target.value}))}></textarea>
+        <div style=${{display:'flex',gap:8,marginTop:14}}><button class="btn gold" style=${{flex:1}} disabled=${busy} onClick=${saveSession}>${busy?'Saving…':'Save'}</button><button class="btn ghost" onClick=${()=>setEdit(false)}>Cancel</button></div>
+      </div>
+    </div>`}
+    ${toast&&html`<div style=${{position:'fixed',left:'50%',bottom:24,transform:'translateX(-50%)',background:'#0E1D38',color:'#fff',padding:'10px 16px',borderRadius:999,fontSize:14,zIndex:70}}>${toast}</div>`}
+  </div>`}
+
+function ParentsMorningCard({profile}){
+  const [d,setD]=useState(null);const [busy,setBusy]=useState('');const [openKey,setOpenKey]=useState('');const [toast,setToast]=useState('')
+  const fire=m=>{setToast(m);setTimeout(()=>setToast(''),3000)}
+  async function load(){const {data}=await sb.functions.invoke('parents-evening',{body:{action:'list'}});if(data&&data.ok)setD(data)}
+  useEffect(()=>{load()},[])
+  if(!d||!d.session)return null
+  const pupils=(d.pupils||[]).filter(p=>p.teachers&&p.teachers.length)
+  if(!pupils.length)return null
+  const ses=d.session
+  const dLbl=s=>{if(!s)return '';const [y,m,da]=s.split('-');return new Date(+y,+m-1,+da).toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long',year:'numeric'})}
+  const hm=t=>t?t.slice(0,5):''
+  async function book(peId,t,pupilId){setBusy(peId+t);const {data,error}=await sb.functions.invoke('parents-evening',{body:{action:'book',pe_teacher_id:peId,slot_time:t,pupil_id:pupilId}});setBusy('');if(error||(data&&data.error)){fire((data&&data.error)||'Could not book');return};setOpenKey('');fire('Booked '+t);load()}
+  async function cancel(bid){if(!window.confirm('Cancel this slot?'))return;setBusy(bid);const {data,error}=await sb.functions.invoke('parents-evening',{body:{action:'cancel',booking_id:bid}});setBusy('');if(error||(data&&data.error)){fire('Error');return};fire('Cancelled');load()}
+  return html`<div class="card" style=${{padding:'14px 16px',margin:'0 0 14px',borderLeft:'4px solid '+C.gold}}>
+    <div class="serif" style=${{color:C.navy,fontWeight:700,fontSize:16}}>📅 ${ses.title}</div>
+    <div class="muted" style=${{fontSize:13,marginTop:2}}>${dLbl(ses.session_date)}</div>
+    <div class="muted" style=${{fontSize:13}}>${hm(ses.start_time)}–${hm(ses.end_time)}${ses.location?' · '+ses.location:''}</div>
+    ${ses.note?html`<div class="muted" style=${{fontSize:12,marginTop:4}}>${ses.note}</div>`:''}
+    <div class="muted" style=${{fontSize:12,marginTop:6,marginBottom:4}}>Book a 5-minute slot with each of your son’s teachers.</div>
+    ${pupils.map(p=>html`<div key=${p.pupil_id} style=${{marginTop:10}}>
+      <div class="lbl" style=${{color:C.navy}}>${p.name} <span class="muted" style=${{fontWeight:400}}>· ${p.academic_year||''}</span></div>
+      ${p.teachers.map(t=>{const mine=t.slots.find(s=>s.status==='mine');const key=p.pupil_id+'|'+t.pe_teacher_id;const isOpen=openKey===key;const free=t.slots.filter(s=>s.status==='free')
+        return html`<div key=${t.pe_teacher_id} class="card" style=${{padding:'9px 11px',marginTop:6,background:'#FafbfD'}}>
+          <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8}}>
+            <div><b style=${{fontSize:14}}>${t.name}</b>${t.room?html`<span class="muted" style=${{fontSize:12}}> · ${t.room}</span>`:''}
+              ${mine?html`<div style=${{color:'#2E7D32',fontWeight:700,fontSize:13,marginTop:2}}>✓ Booked ${mine.t}</div>`:html`<div class="muted" style=${{fontSize:11,marginTop:2}}>${free.length} slot${free.length===1?'':'s'} free</div>`}
+            </div>
+            ${mine?html`<button class="chip" style=${{color:C.urgent}} disabled=${busy===mine.booking_id} onClick=${()=>cancel(mine.booking_id)}>Cancel</button>`
+              :html`<button class="chip ${isOpen?'on':''}" onClick=${()=>setOpenKey(isOpen?'':key)}>${isOpen?'Close':'Book a time'}</button>`}
+          </div>
+          ${isOpen&&!mine&&html`<div style=${{display:'flex',flexWrap:'wrap',gap:6,marginTop:9}}>
+            ${free.length===0&&html`<div class="muted" style=${{fontSize:12}}>No free slots left — sorry.</div>`}
+            ${free.map(s=>html`<button key=${s.t} class="chip" style=${{padding:'5px 10px'}} disabled=${busy===t.pe_teacher_id+s.t} onClick=${()=>book(t.pe_teacher_id,s.t,p.pupil_id)}>${s.t}</button>`)}
+          </div>`}
+        </div>`})}
+    </div>`)}
     ${toast&&html`<div style=${{position:'fixed',left:'50%',bottom:24,transform:'translateX(-50%)',background:'#0E1D38',color:'#fff',padding:'10px 16px',borderRadius:999,fontSize:14,zIndex:70}}>${toast}</div>`}
   </div>`}
 
