@@ -1224,7 +1224,7 @@ function Behaviour({profile}){
   const [codes,setCodes]=useState([]);const [mine,setMine]=useState([]);const [queue,setQueue]=useState([]);const [history,setHistory]=useState([]);const [canReview,setCanReview]=useState(false)
   const [mode,setMode]=useState('log')
   const [pupils,setPupils]=useState(null);const [q,setQ]=useState('');const [sel,setSel]=useState(null)
-  const [period,setPeriod]=useState('');const [code,setCode]=useState('');const [reason,setReason]=useState('');const [reasonOther,setReasonOther]=useState('');const [details,setDetails]=useState('')
+  const [period,setPeriod]=useState('');const [reason,setReason]=useState('');const [details,setDetails]=useState('')
   const [busy,setBusy]=useState(false);const [toast,setToast]=useState('')
   const [openId,setOpenId]=useState(null);const [drafts,setDrafts]=useState({})
   const [exMonths,setExMonths]=useState([]);const [exMonth,setExMonth]=useState('');const [exBusy,setExBusy]=useState(false);const [exMsg,setExMsg]=useState('')
@@ -1233,16 +1233,15 @@ function Behaviour({profile}){
   async function loadPupils(){const {data}=await sb.from('pupils').select('id,first_name,last_name,academic_year,is_active').order('last_name');setPupils((data||[]).filter(p=>p.is_active!==false))}
   useEffect(()=>{load();loadPupils()},[])
   const cdMap=Object.fromEntries(codes.map(c=>[c.code,c]))
-  const codeObj=cdMap[code]
-  const reasons=codeObj?(codeObj.criteria||[]).concat(['Other']):[]
-  async function submitLog(){const finalReason=reason==='Other'?reasonOther.trim():reason
-    if(!sel||!period||!code||!finalReason){fire('Pupil, period, code and reason are all needed');return}
+  async function submitLog(){const r=reason.trim(),dt=details.trim()
+    if(!sel||!period||!r||!dt){fire('Pupil, lesson, the behaviour and what happened are all needed');return}
+    if(dt.length<20){fire('Please add a bit more detail on what happened');return}
     setBusy(true)
-    const {data,error}=await sb.functions.invoke('behaviour',{body:{action:'log',pupil_id:sel.id,code,period,reason:finalReason,details}})
+    const {data,error}=await sb.functions.invoke('behaviour',{body:{action:'log',pupil_id:sel.id,period,reason:r,details:dt}})
     setBusy(false)
     if(error||(data&&data.error)){fire((data&&data.error)||'Error');return}
     fire('Logged · sent to Yasin Patel to review')
-    setSel(null);setQ('');setPeriod('');setCode('');setReason('');setReasonOther('');setDetails('');load()}
+    setSel(null);setQ('');setPeriod('');setReason('');setDetails('');load()}
   function dset(id,patch){setDrafts(d=>({...d,[id]:{...(d[id]||{}),...patch}}))}
   async function onPhoto(id,file){if(!file)return;dset(id,{uploading:true})
     const ext=((file.name||'').split('.').pop()||'jpg').toLowerCase().replace(/[^a-z0-9]/g,'')||'jpg'
@@ -1252,9 +1251,10 @@ function Behaviour({profile}){
     if(error){fire('Photo upload failed');return}
     dset(id,{photoPath:path});fire('Photo attached')}
   async function review(id,status){const d=drafts[id]||{}
-    const {data,error}=await sb.functions.invoke('behaviour',{body:{action:'review',id,status,pupil_statement:d.statement||'',statement_photo_path:d.photoPath||''}})
+    if(status==='confirmed'&&!d.code){fire('Choose a C code before confirming');return}
+    const {data,error}=await sb.functions.invoke('behaviour',{body:{action:'review',id,status,code:d.code||'',pupil_statement:d.statement||'',statement_photo_path:d.photoPath||''}})
     if(error||(data&&data.error)){fire((data&&data.error)||'Error');return}
-    fire(status==='confirmed'?'Confirmed':'Dismissed');setOpenId(null);load()}
+    fire(status==='confirmed'?'Confirmed · C code set':'Dismissed');setOpenId(null);load()}
   async function assignDetention(id){const {data,error}=await sb.functions.invoke('behaviour',{body:{action:'detention',id}})
     if(error||(data&&data.error)){fire((data&&data.error)||'Error');return}
     fire('Saturday detention set · parents notified');load()}
@@ -1279,10 +1279,10 @@ function Behaviour({profile}){
   const list=(pupils||[]).filter(p=>(p.first_name+' '+p.last_name).toLowerCase().includes(q.toLowerCase())).slice(0,8)
   const fmt=d=>d?new Date(d).toLocaleDateString('en-GB',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}):''
   const badge=st=>st==='confirmed'?{bg:'#E5EEE7',fg:C.green,t:'Confirmed'}:st==='dismissed'?{bg:'#EDEAE2',fg:C.muted,t:'Dismissed'}:{bg:'#FBECC9',fg:'#8A6D1B',t:'Pending'}
-  const codeTag=c=>html`<span class="tag" style=${{background:C.navy,color:'#fff',padding:'3px 9px'}}>${c}${cdMap[c]&&cdMap[c].deduction?' · '+cdMap[c].deduction.replace(' behavioural points','pts'):''}</span>`
+  const codeTag=c=>c?html`<span class="tag" style=${{background:C.navy,color:'#fff',padding:'3px 9px'}}>${c}${cdMap[c]&&cdMap[c].deduction?' · '+cdMap[c].deduction.replace(' behavioural points','pts'):''}</span>`:html`<span class="tag" style=${{background:'#FBECC9',color:'#8A6D1B',padding:'3px 9px'}}>No code yet</span>`
   return html`<div>
-    <h2 class="serif" style=${{color:C.navy,marginTop:4}}>Behaviour — C codes</h2>
-    ${canReview&&html`<div style=${{display:'flex',gap:8,marginBottom:12,flexWrap:'wrap'}}>${[['log','✏️ Log a C code'],['review','🔍 Review'+(queue.length?' ('+queue.length+')':'')],['history','🗂 History']].map(([k,l])=>html`<button key=${k} class="chip ${mode===k?'on':''}" style=${{flex:'1 1 auto'}} onClick=${()=>setMode(k)}>${l}</button>`)}</div>`}
+    <h2 class="serif" style=${{color:C.navy,marginTop:4}}>Behaviour</h2>
+    ${canReview&&html`<div style=${{display:'flex',gap:8,marginBottom:12,flexWrap:'wrap'}}>${[['log','✏️ Log behaviour'],['review','🔍 Review'+(queue.length?' ('+queue.length+')':'')],['history','🗂 History']].map(([k,l])=>html`<button key=${k} class="chip ${mode===k?'on':''}" style=${{flex:'1 1 auto'}} onClick=${()=>setMode(k)}>${l}</button>`)}</div>`}
 
     ${mode==='log'&&html`<div>
       <div class="card" style=${{padding:14,marginBottom:14}}>
@@ -1294,15 +1294,12 @@ function Behaviour({profile}){
         ${sel&&html`<div>
           <div class="lbl" style=${{marginTop:12}}>Period</div>
           <div style=${{display:'flex',gap:6,flexWrap:'wrap'}}>${BEHAVIOUR_PERIODS.map(pr=>html`<button key=${pr} class="chip ${period===pr?'on':''}" onClick=${()=>setPeriod(pr)}>${pr}</button>`)}</div>
-          <div class="lbl" style=${{marginTop:12}}>C code</div>
-          <select class="in" value=${code} onChange=${e=>{setCode(e.target.value);setReason('')}}><option value="">- choose code -</option>${codes.map(c=>html`<option key=${c.code} value=${c.code}>${c.code} — ${c.deduction}</option>`)}</select>
-          ${codeObj&&html`<div class="card" style=${{padding:'8px 10px',marginTop:8,background:'#FAF8F3',fontSize:12}}><b>${codeObj.code} leads to:</b> ${codeObj.action}</div>`}
-          ${codeObj&&html`<div class="lbl" style=${{marginTop:12}}>Reason</div>
-          <select class="in" value=${reason} onChange=${e=>setReason(e.target.value)}><option value="">- choose reason -</option>${reasons.map(r=>html`<option key=${r} value=${r}>${r}</option>`)}</select>`}
-          ${reason==='Other'&&html`<input class="in" style=${{marginTop:8}} placeholder="Type the reason…" value=${reasonOther} onInput=${e=>setReasonOther(e.target.value)}/>`}
-          <div class="lbl" style=${{marginTop:12}}>Details <span class="muted" style=${{fontWeight:400}}>(what happened — optional)</span></div>
-          <textarea class="in" style=${{minHeight:60,resize:'vertical',fontFamily:'inherit'}} placeholder="Briefly describe what happened…" value=${details} onInput=${e=>setDetails(e.target.value)}></textarea>
-          <button class="btn" style=${{marginTop:12}} disabled=${busy||!period||!code||!(reason==='Other'?reasonOther.trim():reason)} onClick=${submitLog}>${busy?'Sending…':'Log C code & send to Yasin'}</button>
+          <div class="lbl" style=${{marginTop:12}}>What did he do? <span class="muted" style=${{fontWeight:400}}>(the behaviour)</span></div>
+          <input class="in" placeholder="e.g. Talking and disrupting the lesson" value=${reason} onInput=${e=>setReason(e.target.value)}/>
+          <div class="lbl" style=${{marginTop:12}}>Exactly what happened <span style=${{color:C.urgent}}>*</span> <span class="muted" style=${{fontWeight:400}}>(be detailed — this saves Yasin time)</span></div>
+          <textarea class="in" style=${{minHeight:96,resize:'vertical',fontFamily:'inherit'}} placeholder="What happened, where, who was involved, what was said or done, and anything you already did. The more detail, the faster it is reviewed." value=${details} onInput=${e=>setDetails(e.target.value)}></textarea>
+          <div class="muted" style=${{fontSize:11,marginTop:4}}>Yasin Patel decides the C code (C1–C5) at review — you don't set it.</div>
+          <button class="btn" style=${{marginTop:12}} disabled=${busy||!period||!reason.trim()||details.trim().length<20} onClick=${submitLog}>${busy?'Sending…':'Send to Yasin to review'}</button>
         </div>`}
       </div>
       <h3 class="serif" style=${{color:C.navy,margin:'0 0 8px'}}>My recent logs</h3>
@@ -1323,17 +1320,20 @@ function Behaviour({profile}){
         </div>
         <div class="muted" style=${{fontSize:12,marginTop:5}}>Period ${i.period} · ${i.reason} · by ${i.logged_by_name}${i.details?html`<div style=${{marginTop:3,color:C.ink||'#1B2438'}}>${i.details}</div>`:''}</div>
         ${isOpen&&html`<div style=${{marginTop:10,borderTop:'1px solid #EEEAE0',paddingTop:10}}>
-          <div class="lbl">Pupil's statement</div>
+          <div class="lbl">Give it a C code <span style=${{color:C.urgent}}>*</span></div>
+          <select class="in" value=${d.code||''} onChange=${e=>dset(i.id,{code:e.target.value})}><option value="">- choose code -</option>${codes.map(c=>html`<option key=${c.code} value=${c.code}>${c.code} — ${c.deduction||c.action}</option>`)}</select>
+          ${d.code&&cdMap[d.code]&&html`<div class="card" style=${{padding:'8px 10px',marginTop:8,background:'#FAF8F3',fontSize:12}}><b>${d.code} leads to:</b> ${cdMap[d.code].action}</div>`}
+          <div class="lbl" style=${{marginTop:12}}>Pupil's statement</div>
           <textarea class="in" style=${{minHeight:64,resize:'vertical',fontFamily:'inherit'}} placeholder="Write what the pupil said…" value=${d.statement||''} onInput=${e=>dset(i.id,{statement:e.target.value})}></textarea>
           <div class="lbl" style=${{marginTop:10}}>Photo of handwritten statement <span class="muted" style=${{fontWeight:400}}>(optional)</span></div>
           <input class="in" type="file" accept="image/*" capture="environment" onChange=${e=>onPhoto(i.id,e.target.files&&e.target.files[0])}/>
           ${d.uploading&&html`<div class="muted" style=${{fontSize:11,marginTop:4}}>Uploading…</div>`}
           ${d.photoPath&&html`<div style=${{fontSize:11,marginTop:4,color:C.green}}>✓ Photo attached</div>`}
           <div style=${{display:'flex',gap:8,marginTop:12}}>
-            <button class="btn" style=${{flex:1}} onClick=${()=>review(i.id,'confirmed')}>✓ Confirm it happened</button>
+            <button class="btn" style=${{flex:1}} disabled=${!d.code} onClick=${()=>review(i.id,'confirmed')}>✓ Confirm & apply ${d.code||'C code'}</button>
             <button class="chip" onClick=${()=>review(i.id,'dismissed')}>Dismiss</button>
           </div>
-          <div class="muted" style=${{fontSize:11,marginTop:6}}>After confirming, you can set a Saturday detention from History.</div>
+          <div class="muted" style=${{fontSize:11,marginTop:6}}>Choose the C code above, then confirm. After confirming, you can set a Saturday detention from History.</div>
         </div>`}
       </div>`})}
     </div>`}
