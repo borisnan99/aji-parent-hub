@@ -2041,7 +2041,7 @@ function Dashboard({profile,onSignOut}){
 
 function Composer({groups,groupSize,onSent}){
   const [title,setTitle]=useState('');const [body,setBody]=useState('');const [priority,setPriority]=useState('normal')
-  const [picked,setPicked]=useState([]);const [busy,setBusy]=useState(false);const [files,setFiles]=useState([]);const fileRef=React.useRef(null)
+  const [picked,setPicked]=useState([]);const [busy,setBusy]=useState(false);const [files,setFiles]=useState([]);const fileRef=React.useRef(null);const [wa,setWa]=useState(false)
   const toggle=id=>setPicked(p=>p.includes(id)?p.filter(x=>x!==id):[...p,id])
   const reach=(()=>{const ch=groups.filter(g=>picked.includes(g.id));if(ch.some(g=>g.kind==='all')){const a=groups.find(g=>g.kind==='all');return a?groupSize(a):0}return ch.reduce((s,g)=>s+groupSize(g),0)})()
   async function publish(){if(!title||!picked.length)return;setBusy(true)
@@ -2051,11 +2051,11 @@ function Composer({groups,groupSize,onSent}){
       const {error:ue}=await sb.storage.from('attachments').upload(path,f,{contentType:f.type||'application/octet-stream'})
       if(ue){setBusy(false);onSent('Upload failed: '+ue.message);return}
       atts.push({path,name:f.name,type:f.type})}
-    const {data,error}=await sb.functions.invoke('send-announcement',{body:{mode:'publish',title,message:body,priority,group_ids:picked,attachments:atts}})
+    const {data,error}=await sb.functions.invoke('send-announcement',{body:{mode:'publish',title,message:body,priority,group_ids:picked,attachments:atts,whatsapp:wa}})
     setBusy(false)
     if(error){onSent('Error: '+error.message);return}
-    setTitle('');setBody('');setPicked([]);setPriority('normal');setFiles([])
-    onSent(`Posted · ${data.pushed} push to ${data.recipients} parents`+(data.email_ready?` · ${data.emailed} emailed`:' · email pending sender')+(atts.length?` · ${atts.length} file(s)`:''))}
+    setTitle('');setBody('');setPicked([]);setPriority('normal');setFiles([]);setWa(false)
+    onSent(`Posted · ${data.pushed} push to ${data.recipients} parents`+(data.email_ready?` · ${data.emailed} emailed`:' · email pending sender')+(data.whatsapp?` · ${data.whatsapp} WhatsApp`:'')+(atts.length?` · ${atts.length} file(s)`:''))}
   return html`<div>
     <h2 class="serif" style=${{color:C.navy,marginTop:4}}>New announcement</h2>
     <div class="lbl" style=${{marginTop:10}}>Title</div><input class="in" value=${title} onInput=${e=>setTitle(e.target.value)} placeholder="e.g. Half-term closure"/>
@@ -2069,10 +2069,14 @@ function Composer({groups,groupSize,onSent}){
     <input ref=${fileRef} type="file" multiple accept=".pdf,.doc,.docx,image/*,video/*" style=${{display:'none'}} onChange=${e=>{setFiles(f=>[...f,...Array.from(e.target.files)]);e.target.value=''}}/>
     <button class="btn ghost" style=${{marginTop:6}} onClick=${()=>fileRef.current&&fileRef.current.click()}>📎 Add PDF, Word, image or video</button>
     <div>${files.map((f,i)=>html`<span key=${i} class="chip" style=${{marginTop:6,marginRight:6,display:'inline-block'}}>📎 ${f.name} <span style=${{cursor:'pointer',fontWeight:700}} onClick=${()=>setFiles(x=>x.filter((_,j)=>j!==i))}> ✕</span></span>`)}</div>
-    <div class="card" style=${{background:C.navy,color:'#fff',display:'flex',justifyContent:'space-between',alignItems:'center',padding:'12px 16px',marginTop:16,border:'none'}}>
+    <label style=${{display:'flex',alignItems:'flex-start',gap:8,marginTop:14,cursor:'pointer',padding:'10px 12px',border:'1px solid '+(wa?C.gold:'#E3E8F0'),borderRadius:12,background:wa?'#FDF8EC':'#fff'}}>
+      <input type="checkbox" checked=${wa} onChange=${e=>setWa(e.target.checked)} style=${{width:18,height:18,marginTop:1}}/>
+      <span style=${{fontSize:13,lineHeight:1.4}}>Also send this on <b>WhatsApp</b> <span class="muted">(~2p per parent — use for important notices only; the message text goes into their WhatsApp)</span></span>
+    </label>
+    <div class="card" style=${{background:C.navy,color:'#fff',display:'flex',justifyContent:'space-between',alignItems:'center',padding:'12px 16px',marginTop:12,border:'none'}}>
       <div><div style=${{fontSize:11,color:'#AEBAD0'}}>Will reach</div><div class="serif" style=${{fontSize:18,fontWeight:700}}>${reach} pupils' parents</div></div>
       <button class="btn gold" style=${{width:'auto'}} disabled=${busy||!title||!picked.length} onClick=${publish}>${busy?'Sending…':'Publish'}</button></div>
-    <div class="muted" style=${{fontSize:11,marginTop:8}}>Push to everyone instantly · email only for parents without the app, or for Urgent notices.</div>
+    <div class="muted" style=${{fontSize:11,marginTop:8}}>Free in the app for everyone (push + email). WhatsApp is optional and charged per message.</div>
   </div>`}
 
 function fmtTime(t){try{return new Date(t).toLocaleString([],{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})}catch(_){return ''}}
