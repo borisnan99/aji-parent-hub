@@ -1960,7 +1960,7 @@ function DataProtection({profile}){
 function Dashboard({profile,onSignOut}){
   const [pupils,setPupils]=useState(null);const [classes,setClasses]=useState([]);const [groups,setGroups]=useState([])
   const [anns,setAnns]=useState([]);const [tab,setTab]=useState('overview');const [q,setQ]=useState('');const [toast,setToast]=useState('')
-  const [editPupil,setEditPupil]=useState(null);const canManage=profile.role==='admin';const canIncident=canReportIncident(profile);const canBoarding=canBoardingCheck(profile)||canBoardingDamage(profile);const canSup=canSupervisor(profile);const canMedFire=canBoardTeam(profile);const canKit=canKitchen(profile);const [examAccess,setExamAccess]=useState(false)
+  const [editPupil,setEditPupil]=useState(null);const canManage=profile.role==='admin';const canIncident=canReportIncident(profile);const canBoarding=canBoardingCheck(profile)||canBoardingDamage(profile);const canSup=canSupervisor(profile);const canMedFire=canBoardTeam(profile);const canKit=canKitchen(profile);const [examAccess,setExamAccess]=useState(false);const waViewer=['cc9aab19-db4f-4242-a970-8f7a6e9bd187','e71346ef-2cc2-43a3-8c5d-3f9791c0f722'].includes(profile.id)
   const fire=m=>{setToast(m);setTimeout(()=>setToast(''),3200)}
   async function load(){const [p,c,g,a]=await Promise.all([
     sb.from('pupils').select('*').order('last_name'),
@@ -1984,8 +1984,8 @@ function Dashboard({profile,onSignOut}){
         <div style=${{color:'#AEBAD0',fontSize:10}}>Al Jamiatul Islamiyah</div></div></div>
       <button onClick=${onSignOut} style=${{background:'transparent',border:'1px solid rgba(255,255,255,.3)',color:'#fff',borderRadius:10,padding:'6px 10px',fontSize:12,cursor:'pointer'}}>Sign out</button></div>
     <div style=${{height:3,background:`linear-gradient(90deg,${C.gold},${C.goldSoft})`}}></div>
-    <div style=${{padding:'8px 16px 0',display:'flex',gap:8,flexWrap:'wrap'}}>${['overview','notices','calendar','parents','pupils','attendance','league',...(canManage?['engagement']:[]),'praise','detentions','behaviour','safeguarding',...(canMedFire?['medical','firedrills']:[]),...(canIncident?['incidents']:[]),...(canBoarding?['boarding']:[]),...(canSup?['supervisor']:[]),...(canKit?['kitchen']:[]),...((canManage||examAccess)?['marks']:[]),...(canManage?['dataprotection','users']:[]),'announce','inbox'].map(t=>html`
-      <button key=${t} onClick=${()=>setTab(t)} class="chip ${tab===t?'on':''}">${t==='overview'?'Overview':t==='notices'?'Notices':t==='calendar'?'Calendar':t==='parents'?'Parents’ Morning':t==='pupils'?'Pupils':t==='attendance'?'Attendance':t==='league'?'League':t==='engagement'?'Engagement':t==='praise'?'Praise':t==='detentions'?'Detentions':t==='behaviour'?'Behaviour':t==='safeguarding'?'Safeguarding':t==='medical'?'Medical':t==='firedrills'?'Fire drills':t==='incidents'?'Injuries':t==='boarding'?'Boarding':t==='supervisor'?'Supervisor':t==='kitchen'?'Kitchen':t==='marks'?'Exam marks':t==='dataprotection'?'Data protection':t==='users'?'Users':t==='announce'?'Announce':'Inbox'}</button>`)}</div>
+    <div style=${{padding:'8px 16px 0',display:'flex',gap:8,flexWrap:'wrap'}}>${['overview','notices','calendar','parents','pupils','attendance','league',...(canManage?['engagement']:[]),'praise','detentions','behaviour','safeguarding',...(canMedFire?['medical','firedrills']:[]),...(canIncident?['incidents']:[]),...(canBoarding?['boarding']:[]),...(canSup?['supervisor']:[]),...(canKit?['kitchen']:[]),...((canManage||examAccess)?['marks']:[]),...(canManage?['dataprotection','users']:[]),...(waViewer?['whatsapp']:[]),'announce','inbox'].map(t=>html`
+      <button key=${t} onClick=${()=>setTab(t)} class="chip ${tab===t?'on':''}">${t==='overview'?'Overview':t==='notices'?'Notices':t==='calendar'?'Calendar':t==='parents'?'Parents’ Morning':t==='pupils'?'Pupils':t==='attendance'?'Attendance':t==='league'?'League':t==='engagement'?'Engagement':t==='praise'?'Praise':t==='detentions'?'Detentions':t==='behaviour'?'Behaviour':t==='safeguarding'?'Safeguarding':t==='medical'?'Medical':t==='firedrills'?'Fire drills':t==='incidents'?'Injuries':t==='boarding'?'Boarding':t==='supervisor'?'Supervisor':t==='kitchen'?'Kitchen':t==='marks'?'Exam marks':t==='dataprotection'?'Data protection':t==='users'?'Users':t==='whatsapp'?'WhatsApp':t==='announce'?'Announce':'Inbox'}</button>`)}</div>
     <div style=${{padding:16}}>
       ${pupils===null&&html`<div class="muted">Loading live data…</div>`}
       ${tab==='overview'&&pupils&&html`<div>
@@ -2014,6 +2014,7 @@ function Dashboard({profile,onSignOut}){
       </div>`}
       ${tab==='announce'&&html`<${Composer} groups=${groups} groupSize=${groupSize} onSent=${m=>{fire(m);load()}}/>`}
       ${tab==='inbox'&&html`<${Inbox}/>`}
+      ${tab==='whatsapp'&&waViewer&&html`<${WhatsAppReplies} profile=${profile}/>`}
       ${tab==='attendance'&&html`<${Attendance} profile=${profile}/>`}
       ${tab==='league'&&html`<${Leaderboard} profile=${profile}/>`}
       ${tab==='engagement'&&canManage&&html`<${Engagement}/>`}
@@ -2080,6 +2081,37 @@ function Composer({groups,groupSize,onSent}){
   </div>`}
 
 function fmtTime(t){try{return new Date(t).toLocaleString([],{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})}catch(_){return ''}}
+
+function WhatsAppReplies({profile}){
+  const [rows,setRows]=useState(null);const [toast,setToast]=useState('')
+  const fire=m=>{setToast(m);setTimeout(()=>setToast(''),2500)}
+  async function load(){const {data}=await sb.from('wa_inbound').select('*').order('created_at',{ascending:false});setRows(data||[])}
+  useEffect(()=>{load()
+    const ch=sb.channel('wain').on('postgres_changes',{event:'INSERT',schema:'parent_hub',table:'wa_inbound'},p=>setRows(r=>r?[p.new,...r]:[p.new])).subscribe()
+    return ()=>sb.removeChannel(ch)},[])
+  async function toggle(id,h){await sb.from('wa_inbound').update({handled:!h}).eq('id',id);setRows(r=>r.map(x=>x.id===id?{...x,handled:!h}:x))}
+  if(rows===null)return html`<div class="muted">Loading…</div>`
+  const unh=rows.filter(r=>!r.handled).length
+  return html`<div>
+    <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8}}>
+      <h2 class="serif" style=${{color:C.navy,margin:'4px 0'}}>WhatsApp replies</h2>
+      <button class="chip" onClick=${load}>↻ Refresh</button>
+    </div>
+    <div class="muted" style=${{fontSize:12,marginBottom:10}}>Private — only you and Gulfam can see these. ${unh} unread. To reply, message the parent in the app Inbox (WhatsApp replies back are not sent yet).</div>
+    ${rows.length===0&&html`<div class="card muted" style=${{padding:16}}>No WhatsApp replies yet.</div>`}
+    ${rows.map(r=>html`<div key=${r.id} class="card" style=${{padding:'11px 13px',marginBottom:8,borderLeft:'4px solid '+(r.handled?'#CBD5E1':'#25D366')}}>
+      <div style=${{display:'flex',justifyContent:'space-between',gap:8,alignItems:'center'}}>
+        <b>${r.parent_name||('Unknown '+(r.from_number?'(+'+r.from_number+')':''))}</b>
+        <span class="muted" style=${{fontSize:11}}>${fmtTime(r.created_at)}</span>
+      </div>
+      <div style=${{whiteSpace:'pre-wrap',marginTop:4,fontSize:14}}>${r.body}</div>
+      <div style=${{display:'flex',gap:8,alignItems:'center',marginTop:8}}>
+        ${r.parent_name&&r.from_number?html`<span class="muted" style=${{fontSize:11}}>+${r.from_number}</span>`:''}
+        <button class="chip" style=${{marginLeft:'auto',padding:'3px 10px'}} onClick=${()=>toggle(r.id,r.handled)}>${r.handled?'Mark unread':'Mark handled'}</button>
+      </div>
+    </div>`)}
+    ${toast&&html`<div style=${{position:'fixed',left:'50%',bottom:24,transform:'translateX(-50%)',background:'#0E1D38',color:'#fff',padding:'10px 16px',borderRadius:999,fontSize:14,zIndex:70}}>${toast}</div>`}
+  </div>`}
 
 function Thread({conversationId,isStaff,onBack,newParentId}){
   const [cid,setCid]=useState(conversationId)
