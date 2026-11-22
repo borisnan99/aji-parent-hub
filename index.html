@@ -1984,8 +1984,8 @@ function Dashboard({profile,onSignOut}){
         <div style=${{color:'#AEBAD0',fontSize:10}}>Al Jamiatul Islamiyah</div></div></div>
       <button onClick=${onSignOut} style=${{background:'transparent',border:'1px solid rgba(255,255,255,.3)',color:'#fff',borderRadius:10,padding:'6px 10px',fontSize:12,cursor:'pointer'}}>Sign out</button></div>
     <div style=${{height:3,background:`linear-gradient(90deg,${C.gold},${C.goldSoft})`}}></div>
-    <div style=${{padding:'8px 16px 0',display:'flex',gap:8,flexWrap:'wrap'}}>${['overview','notices','calendar','parents','pupils','attendance','league',...(canManage?['engagement']:[]),'praise','detentions','behaviour','safeguarding',...(canMedFire?['medical','firedrills']:[]),...(canIncident?['incidents']:[]),...(canBoarding?['boarding']:[]),...(canSup?['supervisor']:[]),...(canKit?['kitchen']:[]),...((canManage||examAccess)?['marks']:[]),...(canManage?['dataprotection','users']:[]),...(waViewer?['whatsapp']:[]),'announce','inbox'].map(t=>html`
-      <button key=${t} onClick=${()=>setTab(t)} class="chip ${tab===t?'on':''}">${t==='overview'?'Overview':t==='notices'?'Notices':t==='calendar'?'Calendar':t==='parents'?'Parents’ Morning':t==='pupils'?'Pupils':t==='attendance'?'Attendance':t==='league'?'League':t==='engagement'?'Engagement':t==='praise'?'Praise':t==='detentions'?'Detentions':t==='behaviour'?'Behaviour':t==='safeguarding'?'Safeguarding':t==='medical'?'Medical':t==='firedrills'?'Fire drills':t==='incidents'?'Injuries':t==='boarding'?'Boarding':t==='supervisor'?'Supervisor':t==='kitchen'?'Kitchen':t==='marks'?'Exam marks':t==='dataprotection'?'Data protection':t==='users'?'Users':t==='whatsapp'?'WhatsApp':t==='announce'?'Announce':'Inbox'}</button>`)}</div>
+    <div style=${{padding:'8px 16px 0',display:'flex',gap:8,flexWrap:'wrap'}}>${['overview','notices','calendar','parents','pupils','attendance','league',...(canManage?['engagement']:[]),'praise','detentions','behaviour','safeguarding',...(canMedFire?['medical','firedrills']:[]),...(canIncident?['incidents']:[]),...(canBoarding?['boarding']:[]),...(canSup?['supervisor']:[]),...(canKit?['kitchen']:[]),...((canManage||examAccess)?['marks']:[]),...(canManage?['dataprotection','users']:[]),...(waViewer?['whatsapp']:[]),...(profile.role==='admin'?['access']:[]),'announce','inbox'].map(t=>html`
+      <button key=${t} onClick=${()=>setTab(t)} class="chip ${tab===t?'on':''}">${t==='overview'?'Overview':t==='notices'?'Notices':t==='calendar'?'Calendar':t==='parents'?'Parents’ Morning':t==='pupils'?'Pupils':t==='attendance'?'Attendance':t==='league'?'League':t==='engagement'?'Engagement':t==='praise'?'Praise':t==='detentions'?'Detentions':t==='behaviour'?'Behaviour':t==='safeguarding'?'Safeguarding':t==='medical'?'Medical':t==='firedrills'?'Fire drills':t==='incidents'?'Injuries':t==='boarding'?'Boarding':t==='supervisor'?'Supervisor':t==='kitchen'?'Kitchen':t==='marks'?'Exam marks':t==='dataprotection'?'Data protection':t==='users'?'Users':t==='whatsapp'?'WhatsApp':t==='access'?'Parent access':t==='announce'?'Announce':'Inbox'}</button>`)}</div>
     <div style=${{padding:16}}>
       ${pupils===null&&html`<div class="muted">Loading live data…</div>`}
       ${tab==='overview'&&pupils&&html`<div>
@@ -2015,6 +2015,7 @@ function Dashboard({profile,onSignOut}){
       ${tab==='announce'&&html`<${Composer} groups=${groups} groupSize=${groupSize} onSent=${m=>{fire(m);load()}}/>`}
       ${tab==='inbox'&&html`<${Inbox}/>`}
       ${tab==='whatsapp'&&waViewer&&html`<${WhatsAppReplies} profile=${profile}/>`}
+      ${tab==='access'&&profile.role==='admin'&&html`<${ParentAccess} profile=${profile}/>`}
       ${tab==='attendance'&&html`<${Attendance} profile=${profile}/>`}
       ${tab==='league'&&html`<${Leaderboard} profile=${profile}/>`}
       ${tab==='engagement'&&canManage&&html`<${Engagement}/>`}
@@ -2081,6 +2082,37 @@ function Composer({groups,groupSize,onSent}){
   </div>`}
 
 function fmtTime(t){try{return new Date(t).toLocaleString([],{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})}catch(_){return ''}}
+
+function ParentAccess({profile}){
+  const [rows,setRows]=useState(null);const [busy,setBusy]=useState('');const [toast,setToast]=useState('');const [shown,setShown]=useState({})
+  const fire=m=>{setToast(m);setTimeout(()=>setToast(''),4000)}
+  async function load(){const {data,error}=await sb.functions.invoke('login-link',{body:{action:'list'}});if(!error&&data&&data.ok)setRows(data.parents);else{setRows([]);if(data&&data.error)fire(data.error)}}
+  useEffect(()=>{load()},[])
+  async function copyLink(pid){setBusy('c'+pid);const {data,error}=await sb.functions.invoke('login-link',{body:{action:'link',parent_id:pid}});setBusy('');if(error||!data||!data.link){fire((data&&data.error)||'Could not create link');return}
+    try{await navigator.clipboard.writeText(data.link);fire('Link copied — paste it to the parent. It expires in 1 hour.')}catch(_){}
+    setShown(s=>({...s,[pid]:data.link}))}
+  async function sendWa(pid){setBusy('w'+pid);const {data,error}=await sb.functions.invoke('login-link',{body:{action:'send_wa',parent_id:pid}});setBusy('');if(error||!data||!data.ok){fire((data&&data.error)||'Could not send');return}fire('Sent on WhatsApp ✓  The link expires in 1 hour.')}
+  if(rows===null)return html`<div class="muted">Loading…</div>`
+  return html`<div>
+    <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8}}>
+      <h2 class="serif" style=${{color:C.navy,margin:'4px 0'}}>Parent access</h2>
+      <button class="chip" onClick=${()=>{setRows(null);load()}}>↻ Refresh</button>
+    </div>
+    <div class="muted" style=${{fontSize:12,marginBottom:10,lineHeight:1.5}}>Parents who have <b>never logged in</b> (${rows.length}). Send a one-tap link to set their password and get straight in — no email needed. <b>Each link expires after 1 hour</b>, so send it when the parent is ready to open it.</div>
+    ${rows.length===0&&html`<div class="card" style=${{padding:16}}>🎉 Every parent has logged in at least once.</div>`}
+    ${rows.map(r=>html`<div key=${r.parent_id} class="card" style=${{padding:'11px 13px',marginBottom:8}}>
+      <div><b>${r.name||'(no name)'}</b>
+        <div class="muted" style=${{fontSize:12,marginTop:1}}>${r.email||'no email'}${r.pupils&&r.pupils.length?' · '+r.pupils.join(', '):''}</div>
+        ${!r.mobile?html`<div style=${{fontSize:11,color:C.urgent,marginTop:2}}>No mobile on file — use Copy link</div>`:html`<div class="muted" style=${{fontSize:11,marginTop:2}}>📱 ${r.mobile}</div>`}
+      </div>
+      <div style=${{display:'flex',gap:8,marginTop:9}}>
+        ${r.mobile?html`<button class="btn gold" style=${{flex:1,padding:'8px'}} disabled=${busy==='w'+r.parent_id} onClick=${()=>sendWa(r.parent_id)}>${busy==='w'+r.parent_id?'Sending…':'Send on WhatsApp'}</button>`:''}
+        <button class="btn ghost" style=${{flex:r.mobile?'0 0 auto':'1',padding:'8px 14px'}} disabled=${busy==='c'+r.parent_id} onClick=${()=>copyLink(r.parent_id)}>${busy==='c'+r.parent_id?'…':'Copy link'}</button>
+      </div>
+      ${shown[r.parent_id]?html`<input class="in" style=${{marginTop:8,fontSize:11}} readOnly value=${shown[r.parent_id]} onClick=${e=>e.target.select()}/>`:''}
+    </div>`)}
+    ${toast&&html`<div style=${{position:'fixed',left:'50%',bottom:24,transform:'translateX(-50%)',background:'#0E1D38',color:'#fff',padding:'10px 16px',borderRadius:999,fontSize:14,zIndex:70,maxWidth:'92%',textAlign:'center'}}>${toast}</div>`}
+  </div>`}
 
 function WhatsAppReplies({profile}){
   const [rows,setRows]=useState(null);const [toast,setToast]=useState('')
