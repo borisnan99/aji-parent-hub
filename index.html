@@ -2136,7 +2136,7 @@ function WhatsAppReplies({profile}){
         <b>${r.parent_name||('Unknown '+(r.from_number?'(+'+r.from_number+')':''))}</b>
         <span class="muted" style=${{fontSize:11}}>${fmtTime(r.created_at)}</span>
       </div>
-      <div style=${{whiteSpace:'pre-wrap',marginTop:4,fontSize:14}}>${r.body}</div>
+      <div style=${{whiteSpace:'pre-wrap',marginTop:4,fontSize:14}}>${linkify(r.body)}</div>
       <div style=${{display:'flex',gap:8,alignItems:'center',marginTop:8}}>
         ${r.parent_name&&r.from_number?html`<span class="muted" style=${{fontSize:11}}>+${r.from_number}</span>`:''}
         <button class="chip" style=${{marginLeft:'auto',padding:'3px 10px'}} onClick=${()=>toggle(r.id,r.handled)}>${r.handled?'Mark unread':'Mark handled'}</button>
@@ -2144,6 +2144,20 @@ function WhatsAppReplies({profile}){
     </div>`)}
     ${toast&&html`<div style=${{position:'fixed',left:'50%',bottom:24,transform:'translateX(-50%)',background:'#0E1D38',color:'#fff',padding:'10px 16px',borderRadius:999,fontSize:14,zIndex:70}}>${toast}</div>`}
   </div>`}
+
+function linkify(text){
+  if(!text) return text;
+  const parts=[];const re=/(https?:\/\/[^\s]+)/g;let last=0,m;
+  while((m=re.exec(text))){
+    if(m.index>last) parts.push(text.slice(last,m.index));
+    let url=m[0];let trail='';const tm=url.match(/[),.;!?]+$/);if(tm){trail=tm[0];url=url.slice(0,-trail.length);}
+    parts.push(html`<a href=${url} target="_blank" rel="noopener noreferrer" style=${{color:'inherit',textDecoration:'underline',wordBreak:'break-all'}}>${url}</a>`);
+    if(trail)parts.push(trail);
+    last=m.index+m[0].length;
+  }
+  if(last<text.length)parts.push(text.slice(last));
+  return parts;
+}
 
 function Thread({conversationId,isStaff,onBack,newParentId}){
   const [cid,setCid]=useState(conversationId)
@@ -2184,7 +2198,7 @@ function Thread({conversationId,isStaff,onBack,newParentId}){
       ${msgs.length===0&&html`<div class="muted" style=${{textAlign:'center',marginTop:24}}>No messages yet.</div>`}
       ${msgs.map(m=>{const mine=((m.sender_role==='staff')===isStaff)
         return html`<div key=${m.id} style=${{alignSelf:mine?'flex-end':'flex-start',maxWidth:'82%'}}>
-          <div style=${{background:mine?C.navy:'#fff',color:mine?'#fff':C.ink,border:mine?'none':'1px solid '+C.line,borderRadius:14,padding:'8px 12px',fontSize:14,whiteSpace:'pre-wrap'}}>${m.body}${att(m)}</div>
+          <div style=${{background:mine?C.navy:'#fff',color:mine?'#fff':C.ink,border:mine?'none':'1px solid '+C.line,borderRadius:14,padding:'8px 12px',fontSize:14,whiteSpace:'pre-wrap'}}>${linkify(m.body)}${att(m)}</div>
           <div class="muted" style=${{fontSize:10,marginTop:2,textAlign:mine?'right':'left'}}>${m.sender_role==='staff'?'School':'Parent'} · ${fmtTime(m.created_at)}${isStaff&&m.sender_role==='staff'?html` · <span style=${{cursor:'pointer',textDecoration:'underline',color:C.urgent}} onClick=${()=>del(m.id)}>Delete</span>`:''}</div></div>`})}
     </div>
     ${file&&html`<div class="chip" style=${{alignSelf:'flex-start',margin:'6px 0'}}>📎 ${file.name} <span style=${{cursor:'pointer',fontWeight:700}} onClick=${()=>setFile(null)}> ✕</span></div>`}
@@ -2245,7 +2259,7 @@ function SchoolFeed(){
         <b style=${{color:C.navy,fontSize:15}}>${a.title}</b>
         ${a.priority&&a.priority!=='normal'?html`<span class="tag" style=${{background:pColor(a.priority),color:'#fff',fontSize:10,padding:'2px 8px',flexShrink:0}}>${a.priority==='urgent'?'URGENT':'Important'}</span>`:''}</div>
       <div class="muted" style=${{fontSize:11,margin:'2px 0 8px'}}>${fmt(a.publish_at)}</div>
-      ${a.body?html`<div style=${{fontSize:14,whiteSpace:'pre-wrap',lineHeight:1.5}}>${a.body}</div>`:''}
+      ${a.body?html`<div style=${{fontSize:14,whiteSpace:'pre-wrap',lineHeight:1.5}}>${linkify(a.body)}</div>`:''}
       ${a.attachments&&a.attachments.length?html`<div style=${{marginTop:10,display:'flex',flexDirection:'column',gap:6}}>
         ${a.attachments.map((f,i)=>f.url?html`<a key=${i} href=${f.url} target="_blank" rel="noopener" style=${{display:'flex',alignItems:'center',gap:8,padding:'9px 11px',textDecoration:'none',color:C.navy,background:'#FAF8F3',border:'1px solid '+C.line,borderRadius:10}}>
           <span style=${{fontSize:18}}>${icon(f.type)}</span>
@@ -2884,7 +2898,7 @@ function StaffNotices({profile}){
           <div style=${{fontWeight:m.read?500:700,marginTop:5,color:C.navy}}>${m.subject||(m.body.length>64?m.body.slice(0,64)+'…':m.body)}</div>
           <div class="muted" style=${{fontSize:11,marginTop:2}}>${m.sender_name} · ${fmt(m.created_at)}${m.attachments&&m.attachments.length?' · 📎 '+m.attachments.length:''}</div>
         </div>
-        ${isOpen&&html`<div style=${{padding:'0 12px 12px'}}>${m.subject?html`<div style=${{fontWeight:700,marginBottom:4}}>${m.subject}</div>`:''}${m.body?html`<div style=${{whiteSpace:'pre-wrap',fontSize:14,lineHeight:1.55}}>${m.body}</div>`:''}${(m.attachments||[]).length?html`<div style=${{marginTop:10}}>${m.attachments.map((a,i)=>attView(a,i))}</div>`:''}</div>`}
+        ${isOpen&&html`<div style=${{padding:'0 12px 12px'}}>${m.subject?html`<div style=${{fontWeight:700,marginBottom:4}}>${m.subject}</div>`:''}${m.body?html`<div style=${{whiteSpace:'pre-wrap',fontSize:14,lineHeight:1.55}}>${linkify(m.body)}</div>`:''}${(m.attachments||[]).length?html`<div style=${{marginTop:10}}>${m.attachments.map((a,i)=>attView(a,i))}</div>`:''}</div>`}
       </div>`})}
     </div>`}
 
