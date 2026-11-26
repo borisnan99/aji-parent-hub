@@ -1984,8 +1984,8 @@ function Dashboard({profile,onSignOut}){
         <div style=${{color:'#AEBAD0',fontSize:10}}>Al Jamiatul Islamiyah</div></div></div>
       <button onClick=${onSignOut} style=${{background:'transparent',border:'1px solid rgba(255,255,255,.3)',color:'#fff',borderRadius:10,padding:'6px 10px',fontSize:12,cursor:'pointer'}}>Sign out</button></div>
     <div style=${{height:3,background:`linear-gradient(90deg,${C.gold},${C.goldSoft})`}}></div>
-    <div style=${{padding:'8px 16px 0',display:'flex',gap:8,flexWrap:'wrap'}}>${['overview','notices','calendar','parents','pupils','attendance','league',...(canManage?['engagement']:[]),'praise','detentions','behaviour','safeguarding',...(canMedFire?['medical','firedrills']:[]),...(canIncident?['incidents']:[]),...(canBoarding?['boarding']:[]),...(canSup?['supervisor']:[]),...(canKit?['kitchen']:[]),...((canManage||examAccess)?['marks']:[]),...(canManage?['dataprotection','users']:[]),...(waViewer?['whatsapp']:[]),...(profile.role==='admin'?['access']:[]),'announce','inbox'].map(t=>html`
-      <button key=${t} onClick=${()=>setTab(t)} class="chip ${tab===t?'on':''}">${t==='overview'?'Overview':t==='notices'?'Notices':t==='calendar'?'Calendar':t==='parents'?'Parents’ Morning':t==='pupils'?'Pupils':t==='attendance'?'Attendance':t==='league'?'League':t==='engagement'?'Engagement':t==='praise'?'Praise':t==='detentions'?'Detentions':t==='behaviour'?'Behaviour':t==='safeguarding'?'Safeguarding':t==='medical'?'Medical':t==='firedrills'?'Fire drills':t==='incidents'?'Injuries':t==='boarding'?'Boarding':t==='supervisor'?'Supervisor':t==='kitchen'?'Kitchen':t==='marks'?'Exam marks':t==='dataprotection'?'Data protection':t==='users'?'Users':t==='whatsapp'?'WhatsApp':t==='access'?'Parent access':t==='announce'?'Announce':'Inbox'}</button>`)}</div>
+    <div style=${{padding:'8px 16px 0',display:'flex',gap:8,flexWrap:'wrap'}}>${['overview','notices','calendar','parents','homework','pupils','attendance','league',...(canManage?['engagement']:[]),'praise','detentions','behaviour','safeguarding',...(canMedFire?['medical','firedrills']:[]),...(canIncident?['incidents']:[]),...(canBoarding?['boarding']:[]),...(canSup?['supervisor']:[]),...(canKit?['kitchen']:[]),...((canManage||examAccess)?['marks']:[]),...(canManage?['dataprotection','users']:[]),...(waViewer?['whatsapp']:[]),...(profile.role==='admin'?['access']:[]),'announce','inbox'].map(t=>html`
+      <button key=${t} onClick=${()=>setTab(t)} class="chip ${tab===t?'on':''}">${t==='overview'?'Overview':t==='notices'?'Notices':t==='calendar'?'Calendar':t==='parents'?'Parents’ Morning':t==='homework'?'Homework':t==='pupils'?'Pupils':t==='attendance'?'Attendance':t==='league'?'League':t==='engagement'?'Engagement':t==='praise'?'Praise':t==='detentions'?'Detentions':t==='behaviour'?'Behaviour':t==='safeguarding'?'Safeguarding':t==='medical'?'Medical':t==='firedrills'?'Fire drills':t==='incidents'?'Injuries':t==='boarding'?'Boarding':t==='supervisor'?'Supervisor':t==='kitchen'?'Kitchen':t==='marks'?'Exam marks':t==='dataprotection'?'Data protection':t==='users'?'Users':t==='whatsapp'?'WhatsApp':t==='access'?'Parent access':t==='announce'?'Announce':'Inbox'}</button>`)}</div>
     <div style=${{padding:16}}>
       ${pupils===null&&html`<div class="muted">Loading live data…</div>`}
       ${tab==='overview'&&pupils&&html`<div>
@@ -2035,6 +2035,7 @@ function Dashboard({profile,onSignOut}){
       ${tab==='notices'&&html`<${StaffNotices} profile=${profile}/>`}
       ${tab==='calendar'&&html`<${SchoolCalendar} profile=${profile} canManage=${canManage}/>`}
       ${tab==='parents'&&html`<${ParentsMorning} profile=${profile} canManage=${canManage}/>`}
+      ${tab==='homework'&&html`<${HomeworkAdmin} profile=${profile} canManage=${canManage}/>`}
       ${editPupil&&html`<${PupilEditor} pupil=${editPupil} classes=${classes} onClose=${()=>setEditPupil(null)} onSaved=${m=>{setEditPupil(null);fire(m);load()}}/>`}
     </div>
     <${PrivacyFooter} staff=${true}/>
@@ -2283,6 +2284,7 @@ function ParentApp({profile,onSignOut}){
       <${NotifyCard} userId=${profile.id} fire=${fire}/>
       <${SchoolFeed}/>
       <${ParentsMorningCard} profile=${profile}/>
+      <${HomeworkCard} profile=${profile}/>
       <div style=${{margin:'8px 0 14px'}}><${SchoolCalendar} profile=${profile} canManage=${false}/></div>
       <h2 class="serif" style=${{color:C.navy,margin:'6px 0 2px'}}>Message the school</h2>
       <p class="muted" style=${{fontSize:12,marginTop:0}}>Private — only you and the school office can see this.</p>
@@ -3175,6 +3177,88 @@ function ParentsMorningCard({profile}){
         </div>`})}
     </div>`)}
     ${toast&&html`<div style=${{position:'fixed',left:'50%',bottom:24,transform:'translateX(-50%)',background:'#0E1D38',color:'#fff',padding:'10px 16px',borderRadius:999,fontSize:14,zIndex:70}}>${toast}</div>`}
+  </div>`}
+
+function HomeworkAdmin({profile,canManage}){
+  const [cls,setCls]=useState(null);const [list,setList]=useState(null);const [busy,setBusy]=useState(false);const [toast,setToast]=useState('');const [f,setF]=useState(null)
+  const fire=m=>{setToast(m);setTimeout(()=>setToast(''),3000)}
+  async function load(){
+    const [a,b]=await Promise.all([
+      sb.functions.invoke('homework',{body:{action:'my_classes'}}),
+      sb.functions.invoke('homework',{body:{action:'staff_list'}})])
+    if(a.data&&a.data.ok)setCls(a.data.classes||[]);else setCls([])
+    if(b.data&&b.data.ok)setList(b.data.homework||[])}
+  useEffect(()=>{load()},[])
+  const dLbl=s=>{if(!s)return 'No due date';const [y,m,da]=s.split('-');return 'Due '+new Date(+y,+m-1,+da).toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'})}
+  function startNew(){setF({class_id:(cls&&cls[0]&&cls[0].id)||'',subject:'',title:'',details:'',due_date:'',link:''})}
+  function startEdit(h){setF({id:h.id,class_id:h.class_id,subject:h.subject||'',title:h.title||'',details:h.details||'',due_date:h.due_date||'',link:h.link||''})}
+  async function save(){if(!f.class_id){fire('Choose a class');return};if(!(f.title||'').trim()){fire('Add a title');return};setBusy(true)
+    const {data,error}=await sb.functions.invoke('homework',{body:{action:f.id?'update':'create',id:f.id,class_id:f.class_id,subject:f.subject,title:f.title,details:f.details,due_date:f.due_date||null,link:f.link}})
+    setBusy(false);if(error||(data&&data.error)){fire((data&&data.error)||'Error');return};setF(null);fire('Saved');load()}
+  async function del(id){if(!window.confirm('Remove this homework?'))return;const {data,error}=await sb.functions.invoke('homework',{body:{action:'delete',id}});if(error||(data&&data.error)){fire((data&&data.error)||'Error');return};fire('Removed');load()}
+  if(cls===null)return html`<div class="muted">Loading…</div>`
+  const cname={};(cls||[]).forEach(c=>cname[c.id]=c.name)
+  return html`<div>
+    <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,flexWrap:'wrap'}}>
+      <h2 class="serif" style=${{color:C.navy,margin:'4px 0'}}>Homework</h2>
+      ${!f&&cls.length>0&&html`<button class="btn gold" onClick=${startNew}>+ Set homework</button>`}
+    </div>
+    <p class="muted" style=${{fontSize:12,marginTop:2}}>Parents see homework for their son’s classes. It is view-only for parents.</p>
+    ${cls.length===0&&html`<div class="card muted" style=${{padding:14}}>You are not linked to any class yet, so you cannot set homework. Ask the office to add you to your classes.</div>`}
+    ${f&&html`<div class="card" style=${{padding:'12px 14px',marginBottom:14}}>
+      <h3 class="serif" style=${{color:C.navy,margin:'0 0 8px'}}>${f.id?'Edit homework':'New homework'}</h3>
+      <div class="lbl">Class</div>
+      <select class="in" value=${f.class_id} onChange=${e=>setF(d=>({...d,class_id:e.target.value}))}>
+        <option value="">— choose class —</option>
+        ${(cls||[]).map(c=>html`<option key=${c.id} value=${c.id}>${c.name}</option>`)}
+      </select>
+      <div class="lbl" style=${{marginTop:10}}>Subject <span class="muted" style=${{fontWeight:400}}>(optional)</span></div>
+      <input class="in" placeholder="e.g. Maths, English, Hifz" value=${f.subject} onInput=${e=>setF(d=>({...d,subject:e.target.value}))}/>
+      <div class="lbl" style=${{marginTop:10}}>Title</div>
+      <input class="in" placeholder="e.g. Exercise 4, page 23" value=${f.title} onInput=${e=>setF(d=>({...d,title:e.target.value}))}/>
+      <div class="lbl" style=${{marginTop:10}}>Details <span class="muted" style=${{fontWeight:400}}>(optional)</span></div>
+      <textarea class="in" style=${{minHeight:60,resize:'vertical',fontFamily:'inherit'}} placeholder="What to do, how to hand it in…" value=${f.details} onInput=${e=>setF(d=>({...d,details:e.target.value}))}></textarea>
+      <div class="lbl" style=${{marginTop:10}}>Due date <span class="muted" style=${{fontWeight:400}}>(optional)</span></div>
+      <input class="in" type="date" value=${f.due_date} onInput=${e=>setF(d=>({...d,due_date:e.target.value}))}/>
+      <div class="lbl" style=${{marginTop:10}}>Link <span class="muted" style=${{fontWeight:400}}>(optional)</span></div>
+      <input class="in" placeholder="https://…" value=${f.link} onInput=${e=>setF(d=>({...d,link:e.target.value}))}/>
+      <div style=${{display:'flex',gap:8,marginTop:14}}><button class="btn gold" style=${{flex:1}} disabled=${busy} onClick=${save}>${busy?'Saving…':'Save homework'}</button><button class="btn ghost" onClick=${()=>setF(null)}>Cancel</button></div>
+    </div>`}
+    ${list===null?html`<div class="muted">Loading…</div>`:(list.length===0?html`<div class="card muted" style=${{padding:14}}>No homework set yet.</div>`:html`<div>${list.map(h=>html`<div key=${h.id} class="card" style=${{padding:'10px 13px',marginBottom:8}}>
+      <div style=${{display:'flex',justifyContent:'space-between',gap:8}}>
+        <b>${h.subject?html`<span style=${{color:C.gold}}>${h.subject} · </span>`:''}${h.title}</b>
+        <div style=${{display:'flex',gap:4,flexShrink:0}}><button class="chip" style=${{padding:'3px 8px'}} onClick=${()=>startEdit(h)}>✏️</button><button class="chip" style=${{padding:'3px 8px',color:C.urgent}} onClick=${()=>del(h.id)}>🗑</button></div>
+      </div>
+      <div class="muted" style=${{fontSize:12,marginTop:2}}>${h.class_name||cname[h.class_id]||''} · ${dLbl(h.due_date)}${h.set_by_name?' · '+h.set_by_name:''}</div>
+      ${h.details?html`<div style=${{fontSize:13,marginTop:5,whiteSpace:'pre-wrap'}}>${h.details}</div>`:''}
+      ${h.link?html`<div class="muted" style=${{fontSize:11,marginTop:4,wordBreak:'break-all'}}>🔗 ${h.link}</div>`:''}
+    </div>`)}</div>`)}
+    ${toast&&html`<div style=${{position:'fixed',left:'50%',bottom:24,transform:'translateX(-50%)',background:'#0E1D38',color:'#fff',padding:'10px 16px',borderRadius:999,fontSize:14,zIndex:70}}>${toast}</div>`}
+  </div>`}
+
+function HomeworkCard({profile}){
+  const [d,setD]=useState(null)
+  async function load(){const {data}=await sb.functions.invoke('homework',{body:{action:'parent'}});if(data&&data.ok)setD(data)}
+  useEffect(()=>{load()},[])
+  if(!d)return null
+  const kids=(d.children||[]).filter(c=>c.homework&&c.homework.length)
+  if(!kids.length)return null
+  const today=new Date(Date.now()-new Date().getTimezoneOffset()*60000).toISOString().slice(0,10)
+  const dLbl=s=>{if(!s)return 'No due date';const [y,m,da]=s.split('-');return 'Due '+new Date(+y,+m-1,+da).toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'})}
+  return html`<div class="card" style=${{padding:'14px 16px',margin:'0 0 14px',borderLeft:'4px solid '+C.navy}}>
+    <div class="serif" style=${{color:C.navy,fontWeight:700,fontSize:16}}>📘 Homework</div>
+    ${kids.map(k=>html`<div key=${k.pupil_id} style=${{marginTop:10}}>
+      <div class="lbl" style=${{color:C.navy}}>${k.name}</div>
+      ${k.homework.map(h=>{const overdue=h.due_date&&h.due_date<today;return html`<div key=${h.id} class="card" style=${{padding:'9px 11px',marginTop:6,background:'#FafbfD'}}>
+        <div style=${{display:'flex',justifyContent:'space-between',gap:8,alignItems:'baseline'}}>
+          <b style=${{fontSize:14}}>${h.subject?html`<span style=${{color:C.gold}}>${h.subject} · </span>`:''}${h.title}</b>
+          <span style=${{fontSize:11,whiteSpace:'nowrap',color:overdue?C.urgent:'#8A8F9C',fontWeight:overdue?700:400}}>${dLbl(h.due_date)}</span>
+        </div>
+        <div class="muted" style=${{fontSize:11,marginTop:1}}>${h.class_name||''}</div>
+        ${h.details?html`<div style=${{fontSize:13,marginTop:5,whiteSpace:'pre-wrap'}}>${linkify(h.details)}</div>`:''}
+        ${h.link?html`<div style=${{marginTop:6}}><a href=${h.link} target="_blank" rel="noopener noreferrer" class="chip" style=${{display:'inline-block',textDecoration:'none'}}>Open link ↗</a></div>`:''}
+      </div>`})}
+    </div>`)}
   </div>`}
 
 function App(){
