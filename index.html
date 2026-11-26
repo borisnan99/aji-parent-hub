@@ -3180,40 +3180,43 @@ function ParentsMorningCard({profile}){
   </div>`}
 
 function HomeworkAdmin({profile,canManage}){
-  const [cls,setCls]=useState(null);const [list,setList]=useState(null);const [busy,setBusy]=useState(false);const [toast,setToast]=useState('');const [f,setF]=useState(null)
+  const [cls,setCls]=useState(null);const [subs,setSubs]=useState([]);const [list,setList]=useState(null);const [busy,setBusy]=useState(false);const [toast,setToast]=useState('');const [f,setF]=useState(null)
   const fire=m=>{setToast(m);setTimeout(()=>setToast(''),3000)}
   async function load(){
     const [a,b]=await Promise.all([
-      sb.functions.invoke('homework',{body:{action:'my_classes'}}),
+      sb.functions.invoke('homework',{body:{action:'my_targets'}}),
       sb.functions.invoke('homework',{body:{action:'staff_list'}})])
-    if(a.data&&a.data.ok)setCls(a.data.classes||[]);else setCls([])
+    if(a.data&&a.data.ok){setCls(a.data.classes||[]);setSubs(a.data.subjects||[])}else setCls([])
     if(b.data&&b.data.ok)setList(b.data.homework||[])}
   useEffect(()=>{load()},[])
   const dLbl=s=>{if(!s)return 'No due date';const [y,m,da]=s.split('-');return 'Due '+new Date(+y,+m-1,+da).toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'})}
-  function startNew(){setF({class_id:(cls&&cls[0]&&cls[0].id)||'',subject:'',title:'',details:'',due_date:'',link:''})}
-  function startEdit(h){setF({id:h.id,class_id:h.class_id,subject:h.subject||'',title:h.title||'',details:h.details||'',due_date:h.due_date||'',link:h.link||''})}
-  async function save(){if(!f.class_id){fire('Choose a class');return};if(!(f.title||'').trim()){fire('Add a title');return};setBusy(true)
-    const {data,error}=await sb.functions.invoke('homework',{body:{action:f.id?'update':'create',id:f.id,class_id:f.class_id,subject:f.subject,title:f.title,details:f.details,due_date:f.due_date||null,link:f.link}})
+  function startNew(){setF({targetKey:'',class_id:'',year_group:'',subject:'',title:'',details:'',due_date:'',link:''})}
+  function startEdit(h){setF({id:h.id,targetKey:h.class_id?('class:'+h.class_id):('year:'+h.year_group+'|'+(h.subject||'')),class_id:h.class_id||'',year_group:h.year_group||'',subject:h.subject||'',title:h.title||'',details:h.details||'',due_date:h.due_date||'',link:h.link||''})}
+  function pickTarget(v){if(v.indexOf('class:')===0)setF(d=>({...d,targetKey:v,class_id:v.slice(6),year_group:'',subject:d.subject}));else if(v.indexOf('year:')===0){const r=v.slice(5);const i=r.lastIndexOf('|');const yg=r.slice(0,i);const su=r.slice(i+1);setF(d=>({...d,targetKey:v,class_id:'',year_group:yg,subject:su}))}else setF(d=>({...d,targetKey:'',class_id:'',year_group:''}))}
+  async function save(){if(!f.class_id&&!f.year_group){fire('Choose who it is for');return};if(!(f.title||'').trim()){fire('Add a title');return};setBusy(true)
+    const {data,error}=await sb.functions.invoke('homework',{body:{action:f.id?'update':'create',id:f.id,class_id:f.class_id||null,year_group:f.year_group||null,subject:f.subject,title:f.title,details:f.details,due_date:f.due_date||null,link:f.link}})
     setBusy(false);if(error||(data&&data.error)){fire((data&&data.error)||'Error');return};setF(null);fire('Saved');load()}
   async function del(id){if(!window.confirm('Remove this homework?'))return;const {data,error}=await sb.functions.invoke('homework',{body:{action:'delete',id}});if(error||(data&&data.error)){fire((data&&data.error)||'Error');return};fire('Removed');load()}
   if(cls===null)return html`<div class="muted">Loading…</div>`
-  const cname={};(cls||[]).forEach(c=>cname[c.id]=c.name)
+  const cname={};(cls||[]).forEach(c=>cname[c.class_id]=c.label)
   return html`<div>
     <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,flexWrap:'wrap'}}>
       <h2 class="serif" style=${{color:C.navy,margin:'4px 0'}}>Homework</h2>
-      ${!f&&cls.length>0&&html`<button class="btn gold" onClick=${startNew}>+ Set homework</button>`}
+      ${!f&&(cls.length>0||subs.length>0)&&html`<button class="btn gold" onClick=${startNew}>+ Set homework</button>`}
     </div>
     <p class="muted" style=${{fontSize:12,marginTop:2}}>Parents see homework for their son’s classes. It is view-only for parents.</p>
-    ${cls.length===0&&html`<div class="card muted" style=${{padding:14}}>You are not linked to any class yet, so you cannot set homework. Ask the office to add you to your classes.</div>`}
+    ${cls.length===0&&subs.length===0&&html`<div class="card muted" style=${{padding:14}}>You are not linked to any class or subject yet, so you cannot set homework. Ask the office to add you.</div>`}
     ${f&&html`<div class="card" style=${{padding:'12px 14px',marginBottom:14}}>
       <h3 class="serif" style=${{color:C.navy,margin:'0 0 8px'}}>${f.id?'Edit homework':'New homework'}</h3>
-      <div class="lbl">Class</div>
-      <select class="in" value=${f.class_id} onChange=${e=>setF(d=>({...d,class_id:e.target.value}))}>
-        <option value="">— choose class —</option>
-        ${(cls||[]).map(c=>html`<option key=${c.id} value=${c.id}>${c.name}</option>`)}
+      <div class="lbl">For</div>
+      <select class="in" value=${f.targetKey} onChange=${e=>pickTarget(e.target.value)}>
+        <option value="">— choose year &amp; subject, or a class —</option>
+        ${subs.length?html`<optgroup label="Year groups">${subs.map(s=>html`<option key=${s.label} value=${'year:'+s.year_group+'|'+s.subject}>${s.label}</option>`)}</optgroup>`:''}
+        ${(cls||[]).length?html`<optgroup label="Morning classes">${(cls||[]).map(c=>html`<option key=${c.class_id} value=${'class:'+c.class_id}>${c.label}</option>`)}</optgroup>`:''}
       </select>
-      <div class="lbl" style=${{marginTop:10}}>Subject <span class="muted" style=${{fontWeight:400}}>(optional)</span></div>
-      <input class="in" placeholder="e.g. Maths, English, Hifz" value=${f.subject} onInput=${e=>setF(d=>({...d,subject:e.target.value}))}/>
+      ${f.year_group?html`<div class="muted" style=${{fontSize:12,marginTop:6}}>Subject: <b>${f.subject}</b> · ${f.year_group}</div>`:''}
+      ${f.class_id?html`<div class="lbl" style=${{marginTop:10}}>Subject <span class="muted" style=${{fontWeight:400}}>(optional)</span></div>
+      <input class="in" placeholder="e.g. Hifz, Islamic Studies" value=${f.subject} onInput=${e=>setF(d=>({...d,subject:e.target.value}))}/>`:''}
       <div class="lbl" style=${{marginTop:10}}>Title</div>
       <input class="in" placeholder="e.g. Exercise 4, page 23" value=${f.title} onInput=${e=>setF(d=>({...d,title:e.target.value}))}/>
       <div class="lbl" style=${{marginTop:10}}>Details <span class="muted" style=${{fontWeight:400}}>(optional)</span></div>
@@ -3229,7 +3232,7 @@ function HomeworkAdmin({profile,canManage}){
         <b>${h.subject?html`<span style=${{color:C.gold}}>${h.subject} · </span>`:''}${h.title}</b>
         <div style=${{display:'flex',gap:4,flexShrink:0}}><button class="chip" style=${{padding:'3px 8px'}} onClick=${()=>startEdit(h)}>✏️</button><button class="chip" style=${{padding:'3px 8px',color:C.urgent}} onClick=${()=>del(h.id)}>🗑</button></div>
       </div>
-      <div class="muted" style=${{fontSize:12,marginTop:2}}>${h.class_name||cname[h.class_id]||''} · ${dLbl(h.due_date)}${h.set_by_name?' · '+h.set_by_name:''}</div>
+      <div class="muted" style=${{fontSize:12,marginTop:2}}>${h.scope_label||cname[h.class_id]||''} · ${dLbl(h.due_date)}${h.set_by_name?' · '+h.set_by_name:''}</div>
       ${h.details?html`<div style=${{fontSize:13,marginTop:5,whiteSpace:'pre-wrap'}}>${h.details}</div>`:''}
       ${h.link?html`<div class="muted" style=${{fontSize:11,marginTop:4,wordBreak:'break-all'}}>🔗 ${h.link}</div>`:''}
     </div>`)}</div>`)}
@@ -3254,7 +3257,7 @@ function HomeworkCard({profile}){
           <b style=${{fontSize:14}}>${h.subject?html`<span style=${{color:C.gold}}>${h.subject} · </span>`:''}${h.title}</b>
           <span style=${{fontSize:11,whiteSpace:'nowrap',color:overdue?C.urgent:'#8A8F9C',fontWeight:overdue?700:400}}>${dLbl(h.due_date)}</span>
         </div>
-        <div class="muted" style=${{fontSize:11,marginTop:1}}>${h.class_name||''}</div>
+        <div class="muted" style=${{fontSize:11,marginTop:1}}>${h.scope_label||''}</div>
         ${h.details?html`<div style=${{fontSize:13,marginTop:5,whiteSpace:'pre-wrap'}}>${linkify(h.details)}</div>`:''}
         ${h.link?html`<div style=${{marginTop:6}}><a href=${h.link} target="_blank" rel="noopener noreferrer" class="chip" style=${{display:'inline-block',textDecoration:'none'}}>Open link ↗</a></div>`:''}
       </div>`})}
