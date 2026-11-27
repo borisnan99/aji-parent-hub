@@ -1957,9 +1957,26 @@ function DataProtection({profile}){
     ${toast&&html`<div style=${{position:'fixed',left:'50%',bottom:24,transform:'translateX(-50%)',background:'#0E1D38',color:'#fff',padding:'10px 16px',borderRadius:999,fontSize:14,maxWidth:'90%',textAlign:'center'}}>${toast}</div>`}
   </div>`}
 
+function SentAnnouncements({refresh}){
+  const [rows,setRows]=useState(null)
+  useEffect(()=>{sb.from('announcements').select('*').order('created_at',{ascending:false}).limit(25).then(({data})=>setRows(data||[]))},[refresh])
+  if(rows===null)return html`<div class="muted" style=${{fontSize:12,marginTop:16}}>Loading…</div>`
+  if(!rows.length)return html`<div class="card muted" style=${{padding:14,marginTop:16}}>No announcements yet.</div>`
+  return html`<div style=${{marginTop:20}}>
+    <h3 class="serif" style=${{color:C.navy,margin:'0 0 2px'}}>Sent announcements</h3>
+    <p class="muted" style=${{fontSize:11,margin:'0 0 8px'}}>Internal record of how each announcement went out — not shown to parents.</p>
+    ${rows.map(a=>html`<div key=${a.id} class="card" style=${{padding:'10px 13px',marginBottom:8}}>
+      <div style=${{display:'flex',justifyContent:'space-between',gap:8,alignItems:'baseline'}}>
+        <b style=${{color:C.navy}}>${a.title}</b>
+        <span class="muted" style=${{fontSize:11,whiteSpace:'nowrap',flexShrink:0}}>${fmtTime(a.created_at||a.publish_at)}</span>
+      </div>
+      ${(()=>{const ch=['📱 App'];if(a.email_count>0)ch.push('✉️ Email '+a.email_count);if(a.whatsapp_count>0)ch.push('💬 WhatsApp '+a.whatsapp_count);if(a.push_count>0)ch.push('🔔 Push '+a.push_count);return html`<div style=${{marginTop:6,paddingTop:6,borderTop:'1px solid '+C.line,fontSize:11,color:C.muted}}>Sent via ${ch.join('  ·  ')}</div>`})()}
+    </div>`)}
+  </div>`}
+
 function Dashboard({profile,onSignOut}){
   const [pupils,setPupils]=useState(null);const [classes,setClasses]=useState([]);const [groups,setGroups]=useState([])
-  const [anns,setAnns]=useState([]);const [tab,setTab]=useState('overview');const [q,setQ]=useState('');const [toast,setToast]=useState('')
+  const [anns,setAnns]=useState([]);const [annRefresh,setAnnRefresh]=useState(0);const [tab,setTab]=useState('overview');const [q,setQ]=useState('');const [toast,setToast]=useState('')
   const [editPupil,setEditPupil]=useState(null);const canManage=profile.role==='admin';const canIncident=canReportIncident(profile);const canBoarding=canBoardingCheck(profile)||canBoardingDamage(profile);const canSup=canSupervisor(profile);const canMedFire=canBoardTeam(profile);const canKit=canKitchen(profile);const [examAccess,setExamAccess]=useState(false);const waViewer=['cc9aab19-db4f-4242-a970-8f7a6e9bd187','e71346ef-2cc2-43a3-8c5d-3f9791c0f722'].includes(profile.id)
   const fire=m=>{setToast(m);setTimeout(()=>setToast(''),3200)}
   async function load(){const [p,c,g,a]=await Promise.all([
@@ -2012,7 +2029,8 @@ function Dashboard({profile,onSignOut}){
           ${p.is_active===false?html`<span class="tag" style=${{background:C.urgentSoft,color:C.urgent}}>Off roll</span>`:''}<span class="tag" style=${{background:p.boarding_status==='Boarding'?C.navy:'#EEF',color:p.boarding_status==='Boarding'?'#fff':C.navy}}>${p.boarding_status||'—'}</span></div>
           <div class="muted" style=${{fontSize:12,marginTop:2}}>${p.academic_year||'—'} · ${p.morning_class||'—'}</div></div>`)}</div>
       </div>`}
-      ${tab==='announce'&&html`<${Composer} groups=${groups} groupSize=${groupSize} onSent=${m=>{fire(m);load()}}/>`}
+      ${tab==='announce'&&html`<${Composer} groups=${groups} groupSize=${groupSize} onSent=${m=>{fire(m);load();setAnnRefresh(n=>n+1)}}/>`}
+      ${tab==='announce'&&html`<${SentAnnouncements} refresh=${annRefresh}/>`}
       ${tab==='inbox'&&html`<${Inbox}/>`}
       ${tab==='whatsapp'&&waViewer&&html`<${WhatsAppReplies} profile=${profile}/>`}
       ${tab==='access'&&profile.role==='admin'&&html`<${ParentAccess} profile=${profile}/>`}
@@ -2267,7 +2285,6 @@ function SchoolFeed(){
           <span style=${{fontSize:18}}>${icon(f.type)}</span>
           <span style=${{fontSize:13,fontWeight:600,wordBreak:'break-word',minWidth:0}}>${f.name}</span>
           <span style=${{marginLeft:'auto',fontSize:11,color:C.muted,flexShrink:0}}>Open ›</span></a>`:html`<span key=${i} class="muted" style=${{fontSize:12}}>📎 ${f.name}</span>`)}</div>`:''}
-      ${(()=>{const ch=['📱 App'];if(a.email_count>0)ch.push('✉️ Email');if(a.whatsapp_count>0)ch.push('💬 WhatsApp');return html`<div style=${{marginTop:10,paddingTop:8,borderTop:'1px solid '+C.line,fontSize:11,color:C.muted}}>Sent via ${ch.join('  ·  ')}</div>`})()}
     </div>`)}
   </div>`}
 
