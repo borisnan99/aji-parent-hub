@@ -2057,6 +2057,7 @@ function Composer({groups,groupSize,onSent}){
     const {data,error}=await sb.functions.invoke('send-announcement',{body:{mode:'publish',title,message:body,priority,group_ids:picked,attachments:atts,whatsapp:wa}})
     setBusy(false)
     if(error){onSent('Error: '+error.message);return}
+    if(data&&data.announcement_id){try{await sb.functions.invoke('announcement-stats',{body:{announcement_id:data.announcement_id,push_count:data.pushed,whatsapp_count:data.whatsapp}})}catch(_){ }}
     setTitle('');setBody('');setPicked([]);setPriority('normal');setFiles([]);setWa(false)
     onSent(`Posted · ${data.pushed} push to ${data.recipients} parents`+(data.email_ready?` · ${data.emailed} emailed`:' · email pending sender')+(data.whatsapp?` · ${data.whatsapp} WhatsApp`:'')+(atts.length?` · ${atts.length} file(s)`:''))}
   return html`<div>
@@ -2266,6 +2267,7 @@ function SchoolFeed(){
           <span style=${{fontSize:18}}>${icon(f.type)}</span>
           <span style=${{fontSize:13,fontWeight:600,wordBreak:'break-word',minWidth:0}}>${f.name}</span>
           <span style=${{marginLeft:'auto',fontSize:11,color:C.muted,flexShrink:0}}>Open ›</span></a>`:html`<span key=${i} class="muted" style=${{fontSize:12}}>📎 ${f.name}</span>`)}</div>`:''}
+      ${(()=>{const ch=['📱 App'];if(a.email_count>0)ch.push('✉️ Email');if(a.whatsapp_count>0)ch.push('💬 WhatsApp');return html`<div style=${{marginTop:10,paddingTop:8,borderTop:'1px solid '+C.line,fontSize:11,color:C.muted}}>Sent via ${ch.join('  ·  ')}</div>`})()}
     </div>`)}
   </div>`}
 
